@@ -4,15 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yt2pod"
-version = "0.1.0"
-description = "Turn YouTube channels and playlists into self-hosted podcast feeds, with per-feed filters."
+version = "0.2.0"
+description = "Follow YouTube channels and listen to them as podcasts: a self-hosted PWA with synced progress."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = ["yt-dlp>=2024.10.22", "PyYAML>=6.0"]
+dependencies = [
+    "yt-dlp>=2025.1.1",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx>=0.27"]
 
 [project.scripts]
 yt2pod = "yt2pod.cli:main"
@@ -21,4 +25,4 @@ yt2pod = "yt2pod.cli:main"
 packages = ["yt2pod"]
 
 [tool.setuptools.package-data]
-yt2pod = ["ui.html"]
+yt2pod = ["web/*", "web/**/*"]

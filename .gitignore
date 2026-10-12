@@ -3,6 +3,5 @@ __pycache__/
 .venv/
 venv/
 data/
-config.yaml
 cookies.txt
 .pytest_cache/

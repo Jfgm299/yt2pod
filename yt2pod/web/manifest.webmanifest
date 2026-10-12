@@ -1,0 +1,23 @@
+{
+  "name": "yt2pod",
+  "short_name": "yt2pod",
+  "description": "Tus canales de YouTube, como podcasts.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f2f2f7",
+  "theme_color": "#7c3aed",
+  "categories": ["entertainment", "music"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Buscar canales", "url": "/buscar" },
+    { "name": "Canales", "url": "/canales" }
+  ]
+}

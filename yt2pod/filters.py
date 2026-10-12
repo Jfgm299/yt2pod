@@ -1,108 +1,69 @@
-"""Decide whether a video belongs in a feed."""
+"""Per-subscription rules that decide which new uploads are downloaded automatically.
+
+Deliberately plain: a duration range and some words, no regular expressions.
+"""
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
+import unicodedata
+from dataclasses import asdict, dataclass, field
 
-from .config import Filters
+
+def _fold(text: str) -> str:
+    """Lowercase and strip accents so 'Entrevista' matches 'entrevísta'."""
+    text = unicodedata.normalize("NFKD", text or "")
+    return "".join(c for c in text if not unicodedata.combining(c)).casefold()
 
 
 @dataclass
-class Video:
-    id: str
-    title: str
-    url: str
-    duration: int | None = None
-    description: str = ""
-    published: datetime | None = None
-    thumbnail: str | None = None
-    is_short: bool = False
-    is_live: bool = False
-    channel: str | None = None
+class Rules:
+    min_minutes: int = 0              # 0 = no minimum
+    max_minutes: int = 0              # 0 = no maximum
+    include_words: list[str] = field(default_factory=list)  # title must contain one of these
+    exclude_words: list[str] = field(default_factory=list)  # title must contain none of these
+    skip_shorts: bool = True
 
-    @property
-    def published_date(self) -> date | None:
-        return self.published.date() if self.published else None
+    @classmethod
+    def from_dict(cls, d: dict | None) -> "Rules":
+        d = d or {}
 
+        def words(v) -> list[str]:
+            return [w.strip() for w in (v or []) if isinstance(w, str) and w.strip()][:20]
 
-def video_from_info(info: dict) -> Video:
-    """Build a Video from a yt-dlp info dict (flat or full)."""
-    vid = info.get("id") or ""
-    url = info.get("webpage_url") or info.get("url") or f"https://www.youtube.com/watch?v={vid}"
-    published = None
-    ts = info.get("timestamp") or info.get("release_timestamp")
-    if ts:
-        published = datetime.fromtimestamp(int(ts), tz=timezone.utc)
-    elif info.get("upload_date"):
-        published = datetime.strptime(info["upload_date"], "%Y%m%d").replace(tzinfo=timezone.utc)
-    thumb = info.get("thumbnail")
-    if not thumb and info.get("thumbnails"):
-        thumb = info["thumbnails"][-1].get("url")
-    live_status = info.get("live_status")
-    return Video(
-        id=vid,
-        title=info.get("title") or vid,
-        url=url,
-        duration=int(info["duration"]) if info.get("duration") else None,
-        description=info.get("description") or "",
-        published=published,
-        thumbnail=thumb,
-        is_short="/shorts/" in str(info.get("url") or "") or "/shorts/" in str(info.get("webpage_url") or ""),
-        is_live=live_status in ("is_live", "is_upcoming", "post_live") or bool(info.get("is_live")),
-        channel=info.get("channel") or info.get("uploader"),
-    )
+        return cls(
+            min_minutes=max(0, int(d.get("min_minutes") or 0)),
+            max_minutes=max(0, int(d.get("max_minutes") or 0)),
+            include_words=words(d.get("include_words")),
+            exclude_words=words(d.get("exclude_words")),
+            skip_shorts=bool(d.get("skip_shorts", True)),
+        )
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    def needs_duration(self) -> bool:
+        return bool(self.min_minutes or self.max_minutes or self.skip_shorts)
 
 
-def _matches_any(patterns: list[str], text: str) -> str | None:
-    for p in patterns:
-        if re.search(p, text, re.IGNORECASE):
-            return p
+def check(video: dict, rules: Rules) -> str | None:
+    """None if the video passes, otherwise a short human reason (Spanish, shown in the UI)."""
+    if rules.skip_shorts and video.get("is_short"):
+        return "Es un Short"
+    duration = video.get("duration")
+    if duration:
+        if rules.skip_shorts and duration <= 60:
+            return "Es un Short"
+        if rules.min_minutes and duration < rules.min_minutes * 60:
+            return f"Dura menos de {rules.min_minutes} min"
+        if rules.max_minutes and duration > rules.max_minutes * 60:
+            return f"Dura más de {rules.max_minutes} min"
+    title = _fold(video.get("title") or "")
+    if rules.include_words and not any(_fold(w) in title for w in rules.include_words):
+        return "El título no contiene ninguna de tus palabras"
+    for w in rules.exclude_words:
+        if _fold(w) in title:
+            return f"El título contiene «{w}»"
     return None
-
-
-def check(video: Video, f: Filters) -> str | None:
-    """Return None if the video passes the filters, otherwise the reason it was rejected.
-
-    Filters whose data is missing (e.g. no publish date in a flat listing) are not applied;
-    call again with full metadata to apply them.
-    """
-    if f.exclude_shorts and video.is_short:
-        return "short"
-    if f.exclude_live and video.is_live:
-        return "live/upcoming"
-    if video.duration is not None:
-        if f.min_duration is not None and video.duration < f.min_duration:
-            return f"too short ({fmt_duration(video.duration)} < {fmt_duration(f.min_duration)})"
-        if f.max_duration is not None and video.duration > f.max_duration:
-            return f"too long ({fmt_duration(video.duration)} > {fmt_duration(f.max_duration)})"
-        if f.exclude_shorts and video.duration <= 60 and f.min_duration is None:
-            # Shorts listed outside the /shorts tab still tend to be <= 60s.
-            return "short (<= 60s)"
-    if f.title_include and not _matches_any(f.title_include, video.title):
-        return "title does not match title_include"
-    hit = _matches_any(f.title_exclude, video.title)
-    if hit:
-        return f"title matches exclude pattern {hit!r}"
-    if video.description:
-        hit = _matches_any(f.description_exclude, video.description)
-        if hit:
-            return f"description matches exclude pattern {hit!r}"
-    if f.published_after and video.published_date and video.published_date < f.published_after:
-        return f"published before {f.published_after.isoformat()}"
-    return None
-
-
-def needs_full_info(video: Video, f: Filters) -> bool:
-    """True if some filter could not be evaluated with the data we have."""
-    if video.duration is None and (f.min_duration or f.max_duration or f.exclude_shorts):
-        return True
-    if f.published_after and video.published is None:
-        return True
-    if f.description_exclude and not video.description:
-        return True
-    return False
 
 
 def fmt_duration(seconds: int | None) -> str:

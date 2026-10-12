@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import quote_plus
 
 log = logging.getLogger(__name__)
 
@@ -45,18 +50,131 @@ def normalize_source(source: str) -> str:
     return s
 
 
+CHANNEL_ID_RE = re.compile(r"^UC[0-9A-Za-z_-]{22}$")
+# YouTube's "Channels" filter for the search results page.
+_CHANNEL_SEARCH = "https://www.youtube.com/results?search_query={q}&sp=EgIQAg%253D%253D"
+_RSS = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+_UA = "Mozilla/5.0 (compatible; yt2pod)"
+
+
+def looks_like_channel_ref(text: str) -> bool:
+    """True for things we can open directly instead of searching (@handle, channel URL, UC… id)."""
+    t = text.strip()
+    return bool(t.startswith("@") and " " not in t or CHANNEL_ID_RE.match(t)
+                or re.search(r"youtube\.com/(@|channel/|c/|user/)", t))
+
+
+def _https(url: str | None) -> str | None:
+    if url and url.startswith("//"):
+        return "https:" + url
+    return url
+
+
+def _thumb_by_id(info: dict, wanted: str) -> str | None:
+    for t in info.get("thumbnails") or []:
+        if t.get("id") == wanted:
+            return _https(t.get("url"))
+    return None
+
+
+def channel_from_info(info: dict) -> dict:
+    """Normalise a yt-dlp channel (tab page or search result) into the dict the app stores."""
+    cid = info.get("channel_id") or (info.get("id") if CHANNEL_ID_RE.match(str(info.get("id") or "")) else None)
+    handle = info.get("uploader_id") if str(info.get("uploader_id") or "").startswith("@") else None
+    title = info.get("channel") or info.get("uploader") or info.get("title") or ""
+    for suffix in (" - Videos", " - Vídeos"):
+        title = title.removesuffix(suffix)
+    return {
+        "id": cid,
+        "title": title,
+        "handle": handle,
+        "avatar": _thumb_by_id(info, "avatar_uncropped") or _https(_best_thumbnail(info)),
+        "banner": _thumb_by_id(info, "banner_uncropped"),
+        "subscribers": info.get("channel_follower_count"),
+        "description": (info.get("description") or "")[:1000],
+        "url": info.get("channel_url") or (f"https://www.youtube.com/channel/{cid}" if cid else None),
+        "verified": bool(info.get("channel_is_verified")),
+    }
+
+
+def entry_to_video(entry: dict, channel_id: str | None = None) -> dict:
+    """Flat playlist entry → the video dict the app stores."""
+    published = None
+    if entry.get("timestamp"):
+        published = datetime.fromtimestamp(int(entry["timestamp"])).astimezone().isoformat(timespec="seconds")
+    elif entry.get("upload_date"):
+        published = datetime.strptime(entry["upload_date"], "%Y%m%d").astimezone().isoformat(timespec="seconds")
+    thumbs = entry.get("thumbnails") or []
+    thumb = entry.get("thumbnail") or (_https(thumbs[-1].get("url")) if thumbs else None)
+    url = str(entry.get("url") or "")
+    live = entry.get("live_status")
+    return {
+        "id": entry["id"],
+        "channel_id": entry.get("channel_id") or channel_id,
+        "title": entry.get("title") or entry["id"],
+        "description": entry.get("description") or "",
+        "thumbnail": thumb or f"https://i.ytimg.com/vi/{entry['id']}/hqdefault.jpg",
+        "duration": int(entry["duration"]) if entry.get("duration") else None,
+        "published": published,
+        "is_short": "/shorts/" in url,
+        "live_status": live,
+    }
+
+
 class YouTube:
     def __init__(self, cookies_file: str | None = None):
         self.cookies_file = cookies_file
 
-    def list_videos(self, source: str, limit: int) -> tuple[list[dict], dict]:
-        """Return (flat entries newest-first, playlist/channel info)."""
+    # --- discovery ------------------------------------------------------
+    def search_channels(self, query: str, limit: int = 12) -> list[dict]:
+        import yt_dlp
+
+        opts = _base_opts(self.cookies_file) | {"extract_flat": "in_playlist", "playlistend": limit}
+        url = _CHANNEL_SEARCH.format(q=quote_plus(query))
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as e:
+            raise YouTubeError(f"Search failed: {e}") from e
+        out = []
+        for entry in (info or {}).get("entries") or []:
+            if entry and entry.get("ie_key") == "YoutubeTab" or str((entry or {}).get("id", "")).startswith("UC"):
+                ch = channel_from_info(entry)
+                if ch["id"]:
+                    out.append(ch)
+        return out[:limit]
+
+    def channel(self, source: str, limit: int = 30) -> tuple[dict, list[dict]]:
+        """Channel details plus its most recent uploads (newest first, no Shorts)."""
+        entries, info = self._list(source, limit)
+        ch = channel_from_info(info)
+        if not ch["id"]:
+            raise YouTubeError(f"{source} does not look like a YouTube channel")
+        return ch, [entry_to_video(e, ch["id"]) for e in entries]
+
+    def channel_feed(self, channel_id: str, timeout: float = 20) -> list[dict]:
+        """Latest ~15 uploads from the channel's official RSS feed.
+
+        Cheap and rarely blocked, so it's what the watcher polls. It has no duration and
+        includes Shorts and premieres; the watcher fills those in with video_info().
+        """
+        req = urllib.request.Request(_RSS.format(cid=channel_id), headers={"User-Agent": _UA})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                xml = r.read()
+        except Exception as e:
+            raise YouTubeError(f"Could not read the RSS feed of {channel_id}: {e}") from e
+        return parse_channel_feed(xml, channel_id)
+
+    def _list(self, source: str, limit: int) -> tuple[list[dict], dict]:
         import yt_dlp
 
         opts = _base_opts(self.cookies_file) | {
             "extract_flat": "in_playlist",
             "playlistend": limit,
             "lazy_playlist": True,
+            # Turn "3 days ago" into an approximate upload date without one request per video.
+            "extractor_args": {"youtubetab": {"approximate_date": [""]}},
         }
         url = normalize_source(source)
         try:
@@ -67,14 +185,7 @@ class YouTube:
         if not info:
             raise YouTubeError(f"Nothing found at {url}")
         entries = [e for e in (info.get("entries") or []) if e and e.get("id")]
-        meta = {
-            "title": info.get("channel") or info.get("uploader") or info.get("title"),
-            "playlist_title": info.get("title"),
-            "description": info.get("description"),
-            "url": info.get("webpage_url") or url,
-            "image": _best_thumbnail(info),
-        }
-        return entries[:limit], meta
+        return entries[:limit], info
 
     def video_info(self, video_id_or_url: str) -> dict:
         import yt_dlp
@@ -88,8 +199,13 @@ class YouTube:
         except Exception as e:
             raise YouTubeError(f"Could not get info for {url}: {e}") from e
         keep = ("id", "title", "description", "duration", "timestamp", "release_timestamp",
-                "upload_date", "thumbnail", "webpage_url", "live_status", "channel", "uploader")
-        return {k: info.get(k) for k in keep}
+                "upload_date", "thumbnail", "webpage_url", "live_status", "channel", "channel_id",
+                "uploader", "width", "height")
+        out = {k: info.get(k) for k in keep}
+        w, h = out.get("width"), out.get("height")
+        out["is_short"] = bool(out.get("duration") and out["duration"] <= 180 and w and h and h > w) or \
+            "/shorts/" in str(info.get("original_url") or "")
+        return out
 
     def download_audio(self, video_id: str, out_dir: Path, audio_format: str = "best",
                        sponsorblock_remove: list[str] | None = None,
@@ -208,3 +324,32 @@ def _best_thumbnail(info: dict) -> str | None:
     squares = [t for t in thumbs if t.get("width") and t.get("width") == t.get("height")]
     pick = max(squares or thumbs, key=lambda t: (t.get("width") or 0), default=None)
     return pick.get("url") if pick else info.get("thumbnail")
+
+
+_NS = {"a": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015",
+       "media": "http://search.yahoo.com/mrss/"}
+
+
+def parse_channel_feed(xml: bytes, channel_id: str) -> list[dict]:
+    root = ET.fromstring(xml)
+    out = []
+    for e in root.findall("a:entry", _NS):
+        vid = e.findtext("yt:videoId", namespaces=_NS)
+        if not vid:
+            continue
+        link = (e.find("a:link", _NS).get("href") if e.find("a:link", _NS) is not None else "") or ""
+        group = e.find("media:group", _NS)
+        thumb = group.find("media:thumbnail", _NS).get("url") if group is not None and \
+            group.find("media:thumbnail", _NS) is not None else None
+        out.append({
+            "id": vid,
+            "channel_id": channel_id,
+            "title": e.findtext("a:title", namespaces=_NS) or vid,
+            "description": (group.findtext("media:description", namespaces=_NS) if group is not None else "") or "",
+            "thumbnail": thumb or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+            "duration": None,
+            "published": e.findtext("a:published", namespaces=_NS),
+            "is_short": "/shorts/" in link,
+            "live_status": None,
+        })
+    return out

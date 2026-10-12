@@ -1,134 +1,94 @@
 # yt2pod
 
-Convierte canales y listas de reproducción de YouTube en **podcasts autoalojados**.
-yt2pod vigila las fuentes que elijas, descarga solo el audio de los vídeos que pasan tus filtros
-y publica un feed RSS que puedes añadir a cualquier app de podcasts (AntennaPod, Pocket Casts,
-Overcast, Apple Podcasts…).
+Sigue canales de YouTube y escúchalos **como podcasts**. yt2pod es una app web instalable (PWA)
+para móvil y ordenador: buscas un canal, lo sigues, y cada vídeo nuevo aparece en **Escuchar**
+con el audio ya descargado. Tu progreso se guarda en el servidor, así que empiezas en el móvil
+y sigues en el ordenador justo donde lo dejaste.
 
-*Turn YouTube channels and playlists into self-hosted podcast feeds, with per-feed filters
-(minimum duration, title regex, no Shorts…). English summary at the bottom.*
+*Follow YouTube channels and listen to them as podcasts: a self-hosted PWA with accounts,
+automatic downloads of new uploads and listening progress synced across devices.*
 
-## Características
+## Qué hace
 
-- **Fuentes**: canal (`@handle`, URL o `UC…`) o una lista de reproducción concreta.
-- **Filtros por feed**: duración mínima/máxima (para quedarte con los episodios largos e ignorar los clips),
-  regex de inclusión/exclusión en el título, exclusión por descripción, sin Shorts, sin directos,
-  fecha mínima de publicación.
-- **Vigilancia**: `yt2pod run` comprueba cada fuente cada `check_interval` y descarga lo nuevo.
-- **Primera sincronización prudente**: solo descarga los `backfill` vídeos más recientes, no todo el catálogo.
-- **Explorar el catálogo**: `yt2pod browse` lista los vídeos existentes y te dice cuáles pasan los filtros;
-  `yt2pod add` descarga cualquiera a mano.
-- **Retención**: `max_episodes` borra los audios más antiguos.
-- **SponsorBlock** opcional para recortar patrocinios, intros, etc.
-- Formatos `m4a` (sin recodificar), `mp3` u `opus`.
-- Servidor HTTP integrado con soporte de `Range` (para avanzar/retroceder en la app) y export OPML.
+- **Buscar canales** por nombre, `@usuario` o enlace, con su foto y suscriptores, mientras escribes.
+- **Seguir** un canal: yt2pod mira su RSS oficial cada 30 min y descarga el audio de los vídeos nuevos.
+  Reglas sencillas por canal: descargar o no automáticamente, duración mínima (+10, +20, +45 min)
+  y, si quieres, palabras que el título debe contener o no. Los Shorts y directos se ignoran.
+- **Elegir episodios anteriores** del canal: tócalos uno a uno o usa *Seleccionar → Solo los de +20 min*.
+- **Escuchar**: *Continuar* (lo que tienes a medias) y *Nuevos episodios*, con estado de descarga en vivo.
+- **Reproductor** con ±15/30 s, velocidad, controles en la pantalla de bloqueo y atajos de teclado
+  (espacio, ←, →). La posición se guarda cada pocos segundos y al salir.
+- **Cuentas**: entra con el mismo usuario desde el móvil y el ordenador. Puedes crear cuentas para
+  otras personas; cada una tiene sus canales y su progreso, y el audio se descarga una sola vez.
+- **Feed RSS privado** por cuenta, por si prefieres Overcast, Pocket Casts o Apple Podcasts.
+- Audio en **m4a (AAC) sin recodificar** por defecto: suena igual que en YouTube y funciona en iPhone.
+
+## ¿Dónde lo instalo?
+
+yt2pod es un servidor que tiene que estar encendido siempre (para vigilar los canales) y al que
+llegan tu móvil y tu ordenador. Dos opciones:
+
+| | Servidor en casa (recomendado) | VPS |
+|---|---|---|
+| Ejemplos | Raspberry Pi, NAS, un PC que no apagues | Hetzner, DigitalOcean… |
+| YouTube | Funciona: tu IP es doméstica | A menudo bloquea IPs de centros de datos («Sign in to confirm you're not a bot»). Hay que pasarle cookies y aun así puede fallar. |
+| Acceso desde fuera | [Tailscale](https://tailscale.com) (gratis): `tailscale serve --bg 8765` te da `https://<equipo>.<tailnet>.ts.net` con HTTPS | Dominio + HTTPS (Caddy o similar) |
+
+**La PWA necesita HTTPS** para instalarse y funcionar sin conexión (salvo en `localhost`).
+Con Tailscale o Caddy lo tienes sin hacer nada más.
 
 ## Instalación
 
-Requisitos: Python 3.10+ y `ffmpeg`.
+Con Docker:
 
 ```bash
-git clone https://github.com/<tu-usuario>/yt2pod && cd yt2pod
-pip install .
-cp config.example.yaml config.yaml   # edítalo
-```
-
-O con Docker:
-
-```bash
-cp config.example.yaml config.yaml
 docker compose up -d
 ```
 
-## Probarlo en local con la interfaz
+Sin Docker (Python 3.10+ y `ffmpeg`):
 
 ```bash
 pip install .
-yt2pod ui
+yt2pod serve            # http://localhost:8765
 ```
 
-Se abre `http://localhost:8765` en el navegador (no hace falta `config.yaml`). El flujo es:
+Abre la web, crea tu cuenta (la primera es la de administrador) y busca un canal.
+Para instalarla: en iPhone, *Compartir → Añadir a pantalla de inicio*; en Android o en Chrome/Edge
+de escritorio, *Instalar app*.
 
-1. Escribes un canal (`@handle` o URL) o una lista de reproducción.
-2. Ajustas los filtros: duración mínima/máxima, palabras que el título debe contener o que lo descartan,
-   Shorts, directos, fecha.
-3. **Buscar vídeos**: ves qué vídeos pasan los filtros y por qué se descarta cada uno.
-4. Eliges el formato de audio y pulsas **Preparar audio**: verás el progreso, el códec y bitrate reales
-   del archivo, un reproductor para escucharlo y la URL del feed.
-5. **Guardar como feed vigilado** lo añade a `config.yaml`, y `yt2pod run` descargará desde entonces
-   los vídeos nuevos que pasen esos filtros.
-
-## Calidad de audio
-
-YouTube no guarda el audio en calidad "de estudio": los streams disponibles son normalmente
-**Opus ~130-160 kbps** (formato 251) y **AAC 128 kbps** (formato 140). Ninguna herramienta puede
-sacar más calidad de la que YouTube sirve, así que la clave es **no perderla por el camino**:
-
-| `audio_format` | Qué hace | Calidad |
-|---|---|---|
-| `best` (por defecto) | Copia el mejor stream tal cual (normalmente Opus → `.opus`) | Máxima, sin recodificar |
-| `m4a` | Copia el stream AAC 128 kbps | Sin recodificar; la mejor opción para iPhone/Apple Podcasts |
-| `opus` | Copia el stream Opus | Igual que `best` cuando hay Opus |
-| `mp3` | Recodifica a MP3 VBR V0 (~245 kbps) | Pierde algo: recodificar nunca mejora la calidad |
-
-- yt-dlp ya prefiere la pista de **idioma original** frente a los doblajes automáticos.
-- Con `cookies_file` de una cuenta **YouTube Premium**, algunos vídeos ofrecen Opus ~256 kbps (formato 774),
-  que `best` elegirá automáticamente.
-- La interfaz muestra el códec, el bitrate y si el archivo es original o recodificado.
-
-## Uso por línea de comandos
+Otros comandos:
 
 ```bash
-yt2pod browse full-episodes -r      # ver los vídeos del canal y por qué se filtran
-yt2pod sync --dry-run               # qué se descargaría
-yt2pod sync                         # comprobar una vez y descargar
-yt2pod add full-episodes dQw4w9WgXcQ  # añadir un vídeo concreto (ignora filtros)
-yt2pod run                          # servidor + comprobación periódica (modo servidor)
+yt2pod doctor            # comprueba ffmpeg, yt-dlp y si YouTube te deja descargar
+yt2pod user add ana      # crear una cuenta desde la terminal
+yt2pod user passwd jf    # cambiar una contraseña olvidada
 ```
 
-Después abre `http://<base_url>/` y copia la URL del feed (`/feeds/<id>.xml`) en tu app de podcasts.
+## Configuración (variables de entorno)
 
-`browse` muestra una línea por vídeo:
-
-```
-✔ OK  aBcD123  1:42:10  2026-10-01  #412 – Entrevista completa
-  --  eFgH456     8:31              El mejor momento de #412      [too short (8:31 < 40:00)]
-```
-
-## Configuración
-
-Ver [`config.example.yaml`](config.example.yaml). Resumen:
-
-| Clave | Dónde | Descripción |
+| Variable | Por defecto | Para qué |
 |---|---|---|
-| `server.base_url` | global | URL pública con la que tu móvil llega al servidor (IP de LAN, Tailscale, dominio). |
-| `check_interval` | global | Cada cuánto revisa `run` (`30m`, `1h`…). |
-| `cookies_file` | global | `cookies.txt` para vídeos con restricción de edad o de miembros. |
-| `source` | feed | `@handle`, URL de canal, `UC…`, URL de playlist o `PL…`. |
-| `scan_limit` | feed/defaults | Cuántos vídeos recientes mira en cada comprobación (30). |
-| `backfill` | feed/defaults | Cuántos descarga en la primera sincronización (3). |
-| `max_episodes` | feed/defaults | Máximo de episodios guardados. |
-| `audio_format` | feed/defaults | `m4a`, `mp3` u `opus`. |
-| `sponsorblock_remove` | feed/defaults | Categorías de SponsorBlock a recortar. |
-| `filters.min_duration` / `max_duration` | feed/defaults | `90s`, `20m`, `1h30m`, `1:15:00`. |
-| `filters.title_include` / `title_exclude` | feed/defaults | Listas de regex (sin distinguir mayúsculas). |
-| `filters.description_exclude` | feed/defaults | Regex sobre la descripción. |
-| `filters.exclude_shorts` / `exclude_live` | feed/defaults | `true` por defecto. |
-| `filters.published_after` | feed/defaults | `YYYY-MM-DD`. |
-
-Los filtros de `defaults` se combinan con los de cada feed (el feed gana).
-
-Si cambias los filtros, los vídeos ya filtrados se vuelven a evaluar en la siguiente comprobación
-(solo se recuerdan los descargados, los omitidos del catálogo inicial y los fallidos, que se reintentan).
+| `YT2POD_DATA_DIR` | `data` | Base de datos y audios. |
+| `YT2POD_PORT` / `YT2POD_HOST` | `8765` / `0.0.0.0` | Dónde escucha el servidor. |
+| `YT2POD_CHECK_INTERVAL` | `30m` | Cada cuánto mira si hay vídeos nuevos (mínimo 5 min). |
+| `YT2POD_AUDIO_FORMAT` | `m4a` | `m4a`, `best` (Opus), `opus` o `mp3`. |
+| `YT2POD_BASE_URL` | — | URL pública para los enlaces del feed RSS. |
+| `YT2POD_COOKIES_FILE` | — | `cookies.txt` de YouTube si te bloquean (sobre todo en un VPS). |
+| `YT2POD_SPONSORBLOCK` | — | Categorías a recortar, p. ej. `sponsor,selfpromo`. |
+| `YT2POD_OPEN_SIGNUP` | `false` | Permitir que cualquiera cree cuenta desde la pantalla de inicio. |
 
 ## Cómo funciona
 
-1. Lista los `scan_limit` vídeos más recientes de la fuente con yt-dlp (listado plano, una sola petición).
-2. Aplica los filtros baratos (duración, título, Shorts). Solo pide los metadatos completos de los
-   candidatos (fecha, descripción), y los guarda en caché en SQLite.
-3. Descarga el audio, regenera `data/feeds/<id>.xml` y aplica la retención.
-
-Datos en `data_dir`: `audio/<feed>/<video>.m4a`, `feeds/<feed>.xml`, `yt2pod.sqlite3`.
+- Un solo proceso (FastAPI + uvicorn) sirve la PWA, la API y los feeds, y ejecuta dos hilos:
+  el **vigilante** (lee el RSS de cada canal seguido, con un margen aleatorio entre comprobaciones)
+  y la **cola de descargas** (de una en una; reintenta con espera creciente y se rinde con los errores
+  permanentes, como vídeos privados).
+- Solo se descargan automáticamente los vídeos publicados **después** de seguir el canal; los anteriores
+  se eligen a mano.
+- SQLite guarda cuentas, canales, vídeos, descargas y progreso. Si un episodio se escucha en dos
+  dispositivos, gana la posición más reciente.
+- La interfaz es Preact + htm sin paso de compilación (`yt2pod/web/`), con diseño inspirado en iOS
+  (ver `.claude/skills/apple-design/SKILL.md`).
 
 ## Desarrollo
 
@@ -137,17 +97,10 @@ pip install -e '.[dev]'
 pytest
 ```
 
+Los tests usan un YouTube simulado (`tests/fakes.py`), sin red.
+
 ## Aviso
 
-Úsalo para uso personal y respeta los términos de YouTube y los derechos de los creadores.
-Si YouTube bloquea las descargas, actualiza yt-dlp (`pip install -U yt-dlp`).
-
----
-
-### English
-
-yt2pod watches YouTube channels or playlists, downloads the audio of videos that match per-feed
-filters (min/max duration, title regex, no Shorts/live, publish date) and serves podcast RSS feeds.
-Configure `config.yaml` (see `config.example.yaml`), then run `yt2pod run` (or `docker compose up -d`)
-and subscribe to `http://<base_url>/feeds/<id>.xml`. Use `yt2pod browse <feed>` to explore a
-channel's back catalogue and `yt2pod add <feed> <video>` to add individual videos. MIT licensed.
+Para uso personal. Respeta los términos de YouTube y los derechos de los creadores; no redistribuyas
+el contenido. Si las descargas fallan, actualiza yt-dlp (`pip install -U yt-dlp`; la imagen Docker lo
+hace al arrancar).

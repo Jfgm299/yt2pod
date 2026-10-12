@@ -3,7 +3,13 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8765:8765"
     volumes:
-      - ./config.yaml:/config/config.yaml:ro
       - ./data:/data
+      # - ./cookies.txt:/cookies.txt:ro   # only if YouTube blocks your server (see README)
+    environment:
+      YT2POD_CHECK_INTERVAL: 30m
+      YT2POD_AUDIO_FORMAT: m4a
+      # YT2POD_BASE_URL: https://yt2pod.tu-tailnet.ts.net   # public URL for the RSS feeds
+      # YT2POD_COOKIES_FILE: /cookies.txt
+      # YT2POD_SPONSORBLOCK: sponsor,selfpromo
