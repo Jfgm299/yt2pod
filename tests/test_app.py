@@ -165,6 +165,23 @@ def test_storage_and_removing_played_episodes(env, tmp_path):
     assert len(list((tmp_path / "audio").rglob("*.m4a"))) == 1
 
 
+def test_older_videos_and_search_inside_a_channel(env):
+    client, app, yt = env
+    from datetime import datetime, timedelta, timezone
+    old = datetime.now(timezone.utc) - timedelta(days=400)
+    yt.uploads[LA_PIZARRA] += [yt._video(f"old{i:08d}", LA_PIZARRA, f"Archivo {i}", 3000, old - timedelta(days=i))
+                               for i in range(140)]
+    first = client.get(f"/api/channels/{LA_PIZARRA}").json()["videos"]
+    assert len(first) == 40
+    more = client.post(f"/api/channels/{LA_PIZARRA}/more", json={"shown": len(first)}).json()
+    assert len(more["videos"]) > len(first) and not more["done"]
+    more = client.post(f"/api/channels/{LA_PIZARRA}/more", json={"shown": len(more["videos"])}).json()
+    assert more["done"] and more["videos"][-1]["id"] == "old00000139"
+    found = client.get(f"/api/channels/{LA_PIZARRA}/search", params={"q": "archivo 7"}).json()
+    assert [v["id"] for v in found][:2] == ["old00000007", "old00000070"]
+    assert all("state" in v for v in found)
+
+
 # --- progress, synced between devices ------------------------------------------------
 def test_progress_is_shared_between_devices_and_newest_wins(env):
     client, app, _ = env

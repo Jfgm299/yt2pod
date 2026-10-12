@@ -27,6 +27,9 @@ from .youtube import CHANNEL_ID_RE, YouTube, YouTubeError, looks_like_channel_re
 log = logging.getLogger(__name__)
 WEB = Path(__file__).parent / "web"
 CHANNEL_REFRESH = timedelta(hours=1)
+FIRST_LISTING = 40   # uploads listed when a channel page opens
+MORE_PAGE = 60       # older uploads fetched per "load more"
+MAX_VIDEOS = 2000
 
 
 # --- request bodies -------------------------------------------------------------
@@ -59,6 +62,10 @@ class CookiesIn(BaseModel):
     content: str = Field(max_length=2_000_000)
 
 
+class MoreIn(BaseModel):
+    shown: int = Field(60, ge=0, le=2000)
+
+
 class PlayedIn(BaseModel):
     played: bool
 
@@ -82,6 +89,7 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
     search_cache: dict[str, tuple[float, list[dict]]] = {}
     failed_logins: dict[str, list[float]] = {}
     refresh_locks: dict[str, threading.Lock] = {}
+    listed_upto: dict[str, int] = {}  # how far down each channel's Videos tab we have listed
 
     # --- auth helpers ---------------------------------------------------------------
     def current_user(request: Request) -> dict:
@@ -253,14 +261,14 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
             return
         lock = refresh_locks.setdefault(channel_id, threading.Lock())
         with lock:
-            info, videos = yt.channel(channel_id, 40)
+            info, videos = yt.channel(channel_id, FIRST_LISTING)
             db.upsert_channel(info)
             for v in videos:
                 db.upsert_video(v)
             db.mark_listed(channel_id)
 
     @app.get("/api/channels/{channel_id}")
-    def channel(channel_id: str, refresh: bool = False, user: dict = Depends(current_user)):
+    def channel(channel_id: str, refresh: bool = False, limit: int = 60, user: dict = Depends(current_user)):
         if not CHANNEL_ID_RE.match(channel_id):
             raise HTTPException(404, "Canal no válido")
         try:
@@ -271,7 +279,44 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
         ch = db.channel(channel_id)
         sub = db.subscription(user["id"], channel_id)
         return {"channel": ch, "subscription": sub,
-                "videos": [v for v in db.channel_videos(user["id"], channel_id) if not v["is_short"]]}
+                "videos": db.channel_videos(user["id"], channel_id, max(1, min(limit, MAX_VIDEOS)))}
+
+    @app.post("/api/channels/{channel_id}/more")
+    def channel_more(channel_id: str, body: MoreIn, user: dict = Depends(current_user)):
+        """List the next page of older uploads from YouTube. `shown` is how many the app shows now,
+        so it gets back everything it had plus the new ones."""
+        if not CHANNEL_ID_RE.match(channel_id) or not db.channel(channel_id):
+            raise HTTPException(404, "Canal no válido")
+        start = listed_upto.get(channel_id, FIRST_LISTING) + 1
+        try:
+            videos = yt.channel_videos(channel_id, start, MORE_PAGE)
+        except YouTubeError as e:
+            raise HTTPException(502, f"YouTube no respondió: {e}")
+        for v in videos:
+            db.upsert_video(v)
+        listed_upto[channel_id] = start + MORE_PAGE - 1
+        return {"videos": db.channel_videos(user["id"], channel_id, min(body.shown + MORE_PAGE, MAX_VIDEOS)),
+                "done": len(videos) < MORE_PAGE}
+
+    @app.get("/api/channels/{channel_id}/search")
+    def channel_search(channel_id: str, q: str, user: dict = Depends(current_user)):
+        q = q.strip()
+        if not CHANNEL_ID_RE.match(channel_id) or len(q) < 2:
+            raise HTTPException(404, "Canal no válido")
+        key = f"channel:{channel_id}:{q.casefold()}"
+        hit = search_cache.get(key)
+        if hit and time.time() - hit[0] < 600:
+            ids = hit[1]
+        else:
+            try:
+                found = yt.search_channel(channel_id, q)
+            except YouTubeError as e:
+                raise HTTPException(502, f"YouTube no respondió: {e}")
+            for v in found:
+                db.upsert_video(v)
+            ids = [v["id"] for v in found if not v["is_short"]]
+            search_cache[key] = (time.time(), ids)
+        return db.videos_with_state(user["id"], ids)
 
     # --- subscriptions ------------------------------------------------------------
     @app.get("/api/subscriptions")

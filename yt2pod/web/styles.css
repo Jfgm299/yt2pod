@@ -438,6 +438,8 @@ img.fade.loaded { opacity: 1; }
   .ch-desc { margin: 6px 0 0; }
 }
 .rules { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; border-top: 0.5px solid var(--separator); }
+.load-older { display: flex; justify-content: center; margin: 18px 0 6px; }
+.load-older .btn { gap: 8px; }
 .rules label.t-foot { color: var(--label-2); display: block; margin-bottom: 6px; }
 
 /* --- floating selection bar --- */
@@ -593,7 +595,7 @@ img.fade.loaded { opacity: 1; }
     height: calc(var(--tabbar-h) + var(--dock-b) + 30px);
     background: linear-gradient(to top, color-mix(in srgb, var(--bg) 78%, transparent), transparent);
   }
-  .glass, .tabbar, .mini {
+  .tabbar, .mini {
     background: var(--glass);
     -webkit-backdrop-filter: blur(16px) saturate(190%) brightness(1.04);
     backdrop-filter: blur(16px) saturate(190%) brightness(1.04);

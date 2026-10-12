@@ -371,13 +371,20 @@ class DB:
     def episode(self, user_id: int, video_id: str) -> dict | None:
         return self.one(self._EPISODE_SQL + " WHERE l.user_id=? AND v.id=?", (user_id, video_id))
 
+    _VIDEO_SQL = """SELECT v.*, l.state, l.reason, l.position, l.played,
+                           d.status AS download_status, d.progress AS download_progress
+                    FROM videos v LEFT JOIN library l ON l.video_id=v.id AND l.user_id=?
+                    LEFT JOIN downloads d ON d.video_id=v.id"""
+
     def channel_videos(self, user_id: int, channel_id: str, limit: int = 60) -> list[dict]:
-        """Everything we know a channel uploaded, with this user's library state for each."""
-        return self.q(
-            """SELECT v.*, l.state, l.reason, l.position, l.played,
-                      d.status AS download_status, d.progress AS download_progress
-               FROM videos v LEFT JOIN library l ON l.video_id=v.id AND l.user_id=?
-               LEFT JOIN downloads d ON d.video_id=v.id
-               WHERE v.channel_id=? ORDER BY v.published DESC, v.first_seen DESC LIMIT ?""",
-            (user_id, channel_id, limit),
-        )
+        """Everything we know a channel uploaded (no Shorts), with this user's library state for each."""
+        return self.q(self._VIDEO_SQL + """ WHERE v.channel_id=? AND COALESCE(v.is_short, 0)=0
+                      ORDER BY v.published DESC, v.first_seen DESC LIMIT ?""", (user_id, channel_id, limit))
+
+    def videos_with_state(self, user_id: int, ids: list[str]) -> list[dict]:
+        """These videos, in this order, with this user's library state."""
+        if not ids:
+            return []
+        rows = {r["id"]: r for r in self.q(self._VIDEO_SQL + f" WHERE v.id IN ({','.join('?' * len(ids))})",
+                                           (user_id, *ids))}
+        return [rows[i] for i in ids if i in rows]

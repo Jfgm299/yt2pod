@@ -317,15 +317,42 @@ function ChannelScreen({ id }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [view, setView] = useState("all");
+  const [older, setOlder] = useState({ loading: false, done: false });
+  const [query, setQuery] = useState("");
+  const [remote, setRemote] = useState({ q: "", videos: [], loading: false, error: null });
   const episodes = useStore((s) => s.episodes);
   const sub = useStore((s) => s.subs.find((x) => x.id === id));
+  const shownCount = useRef(60); // keep older pages on screen when the list reloads
 
   const load = useCallback(async (refresh = false) => {
     try {
-      const d = await api(`/api/channels/${id}${refresh ? "?refresh=1" : ""}`);
+      const d = await api(`/api/channels/${id}?limit=${shownCount.current}${refresh ? "&refresh=1" : ""}`);
       channelCache.set(id, d); setData(d); setError(null);
     } catch (e) { setError(e.message); }
   }, [id]);
+  const loadOlder = async () => {
+    setOlder({ loading: true, done: false });
+    try {
+      const r = await api(`/api/channels/${id}/more`, { method: "POST", body: { shown: data.videos.length } });
+      if (!r.done && r.videos.length === data.videos.length) r.done = true; // nothing new came back
+      shownCount.current = Math.max(60, r.videos.length);
+      const d = { ...data, videos: r.videos };
+      channelCache.set(id, d); setData(d);
+      setOlder({ loading: false, done: r.done });
+    } catch (e) { toast(e.message); setOlder({ loading: false, done: false }); }
+  };
+  // Search inside the channel: what's already loaded filters at once, YouTube's own channel
+  // search fills in older videos a moment later.
+  const term = query.trim();
+  useEffect(() => {
+    if (term.length < 2) { setRemote({ q: "", videos: [], loading: false, error: null }); return; }
+    setRemote((r) => ({ ...r, loading: true, error: null }));
+    const timer = setTimeout(async () => {
+      try { setRemote({ q: term, videos: await api(`/api/channels/${id}/search?q=${encodeURIComponent(term)}`), loading: false, error: null }); }
+      catch (e) { setRemote({ q: term, videos: [], loading: false, error: e.message }); }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [term, id]);
   useEffect(() => { setData(channelCache.get(id) || null); load(); }, [id]);
   // Keep download state in sync with the library (the store polls while things download).
   const byId = useMemo(() => new Map(episodes.map((e) => [e.id, e])), [episodes]);
@@ -339,10 +366,17 @@ function ChannelScreen({ id }) {
   }
   const ch = data.channel;
   const following = !!sub;
-  const videos = data.videos.map((v) => {
+  const withLibrary = (v) => {
     const ep = byId.get(v.id);
     return ep ? { ...v, ...ep, state: "active" } : v.state === "active" ? { ...v, state: null } : v;
-  });
+  };
+  let videos = data.videos.map(withLibrary);
+  if (term) {
+    const needle = fold(term);
+    const local = videos.filter((v) => fold(v.title).includes(needle));
+    const seen = new Set(local.map((v) => v.id));
+    videos = [...local, ...(remote.q === term ? remote.videos.filter((v) => !seen.has(v.id)).map(withLibrary) : [])];
+  }
   const shown = videos.filter((v) => view === "all" || (view === "long" ? (v.duration || 0) >= LONG : v.duration && v.duration < LONG));
   const addable = shown.filter((v) => v.state !== "active");
 
@@ -397,6 +431,13 @@ function ChannelScreen({ id }) {
         <h2 class="t-title3">${t("Vídeos")}</h2>
         ${addable.length ? html`<button class="link-btn small" onClick=${() => { setSelecting(!selecting); setSelected(new Set()); }}>${selecting ? t("Cancelar") : t("Seleccionar")}</button>` : null}
       </div>
+      <div class="searchbar" style="margin:0 0 10px">
+        <${Icon.search} class="glass"/>
+        <input class="field" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck=${false}
+          placeholder=${t("Buscar en este canal")} aria-label=${t("Buscar en este canal")} value=${query} onInput=${(e) => setQuery(e.target.value)}/>
+        ${remote.loading ? html`<span class="clear"><span class="spinner" style="width:16px;height:16px;border-width:2px"></span></span>`
+          : query ? html`<button class="clear" aria-label=${t("Borrar")} onClick=${() => setQuery("")}><${Icon.xcircle} style="width:18px;height:18px"/></button>` : null}
+      </div>
       <div style="margin-bottom:6px"><${Segmented} label=${t("Filtrar vídeos")} options=${VIEWS} value=${view} onChange=${setView}/></div>
       ${selecting ? html`<div class="chips" style="margin:10px 0 4px">
         <button class="chip" onClick=${() => setSelected(new Set(addable.map((v) => v.id)))}>${t("Todos ({n})", { n: addable.length })}</button>
@@ -407,7 +448,16 @@ function ChannelScreen({ id }) {
         ${shown.map((v) => html`<${VideoRow} key=${v.id} v=${v} selecting=${selecting} selected=${selected.has(v.id)}
             onToggle=${() => toggle(v)} onAdd=${() => add([v.id])}/>`)}
       </div>
-      ${!shown.length ? html`<p class="dim t-sub" style="margin:16px 4px">${t("No hay vídeos en esta vista.")}</p>` : null}
+      ${term ? html`<p class="dim t-sub" style="margin:14px 4px;text-align:center">${
+          remote.loading ? t("Buscando también en YouTube…")
+          : remote.error ? remote.error
+          : !shown.length ? t("Ningún vídeo coincide con «{q}».", { q: term }) : null}</p>`
+        : !shown.length && older.done ? html`<p class="dim t-sub" style="margin:16px 4px">${t("No hay vídeos en esta vista.")}</p>` : null}
+      ${!term ? html`<div class="load-older">
+        ${older.done ? html`<p class="dim t-foot">${t("Ya no hay vídeos más antiguos.")}</p>`
+          : html`<button class="btn pill gray" disabled=${older.loading} onClick=${loadOlder}>
+              ${older.loading ? html`<span class="spinner" style="width:16px;height:16px;border-width:2px"></span>${t("Cargando…")}` : t("Cargar vídeos anteriores")}</button>`}
+      </div>` : null}
     </section>
     ${selecting ? html`<div style="height:72px" aria-hidden="true"></div>` : null}
     ${selecting && selected.size ? html`<div class="selbar">
@@ -416,6 +466,9 @@ function ChannelScreen({ id }) {
     </div>` : null}
   <//>`;
 }
+
+/** Lowercase without accents, so "camion" finds "Camión". */
+const fold = (s = "") => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function VideoRow({ v, selecting, selected, onToggle, onAdd }) {
   const inLib = v.state === "active";

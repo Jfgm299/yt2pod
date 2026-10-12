@@ -15,6 +15,7 @@ automatic downloads of new uploads and listening progress synced across devices.
   Reglas sencillas por canal: descargar o no automáticamente, duración mínima (+10, +20, +45 min)
   y, si quieres, palabras que el título debe contener o no. Los Shorts y directos se ignoran.
 - **Elegir episodios anteriores** del canal: tócalos uno a uno o usa *Seleccionar → Solo los de +20 min*.
+  *Cargar vídeos anteriores* trae más del archivo del canal y el buscador del canal encuentra un vídeo concreto.
 - **Escuchar**: *Continuar* (lo que tienes a medias) y *Nuevos episodios*, con estado de descarga en vivo.
 - **Reproductor** con ±15/30 s, velocidad, temporizador para dormir (pausa a los 5–90 min), controles en la pantalla de bloqueo y atajos de teclado
   (espacio, ←, →). La posición se guarda cada pocos segundos y al salir.

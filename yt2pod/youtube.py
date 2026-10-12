@@ -158,6 +158,17 @@ class YouTube:
             raise YouTubeError(f"{source} does not look like a YouTube channel")
         return ch, [entry_to_video(e, ch["id"]) for e in entries]
 
+    def channel_videos(self, channel_id: str, start: int, count: int) -> list[dict]:
+        """Older uploads: items start..start+count-1 of the channel's Videos tab (1-based)."""
+        entries, _ = self._list(channel_id, count, items=f"{start}-{start + count - 1}")
+        return [entry_to_video(e, channel_id) for e in entries]
+
+    def search_channel(self, channel_id: str, query: str, limit: int = 30) -> list[dict]:
+        """Search one channel's videos, the way the search box on its YouTube page does."""
+        url = f"https://www.youtube.com/channel/{channel_id}/search?query={quote_plus(query)}"
+        entries, _ = self._list(url, limit)
+        return [entry_to_video(e, channel_id) for e in entries if len(str(e.get("id"))) == 11]
+
     def channel_feed(self, channel_id: str, timeout: float = 20) -> list[dict]:
         """Latest ~15 uploads from the channel's official RSS feed.
 
@@ -172,12 +183,12 @@ class YouTube:
             raise YouTubeError(f"Could not read the RSS feed of {channel_id}: {e}") from e
         return parse_channel_feed(xml, channel_id)
 
-    def _list(self, source: str, limit: int) -> tuple[list[dict], dict]:
+    def _list(self, source: str, limit: int, items: str | None = None) -> tuple[list[dict], dict]:
         import yt_dlp
 
         opts = _base_opts(self.cookies()) | {
             "extract_flat": "in_playlist",
-            "playlistend": limit,
+            **({"playlist_items": items} if items else {"playlistend": limit}),
             "lazy_playlist": True,
             # Turn "3 days ago" into an approximate upload date without one request per video.
             "extractor_args": {"youtubetab": {"approximate_date": [""]}},

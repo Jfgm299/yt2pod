@@ -60,6 +60,13 @@ class FakeYouTube:
             raise YouTubeError(f"no channel {source}")
         return dict(self.channels[cid]), [dict(v, duration=v["duration"]) for v in self.uploads[cid][:limit]]
 
+    def channel_videos(self, channel_id, start, count):
+        return [dict(v) for v in self.uploads[channel_id][start - 1:start - 1 + count]]
+
+    def search_channel(self, channel_id, query, limit=30):
+        q = query.casefold()
+        return [dict(v) for v in self.uploads[channel_id] if q in v["title"].casefold()][:limit]
+
     def channel_feed(self, channel_id):
         # Like the real RSS feed: no durations.
         return [dict(v, duration=None) for v in self.uploads[channel_id][:15]]
