@@ -1,5 +1,6 @@
 // Small helpers: API calls, formatting, springs, icons.
 import { html } from "/vendor/htm-preact.js";
+import { t, lang } from "/i18n.js";
 
 // --- API --------------------------------------------------------------------------
 export class ApiError extends Error {
@@ -16,11 +17,11 @@ export async function api(path, { method = "GET", body, signal, keepalive } = {}
     });
   } catch (e) {
     if (e.name === "AbortError") throw e;
-    throw new ApiError(0, "Sin conexión con el servidor");
+    throw new ApiError(0, t("Sin conexión con el servidor"));
   }
   const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
   if (!res.ok) {
-    const err = new ApiError(res.status, data?.error || data?.detail?.[0]?.msg || `Error ${res.status}`);
+    const err = new ApiError(res.status, t(data?.error || data?.detail?.[0]?.msg || `Error ${res.status}`));
     if (res.status === 401) window.dispatchEvent(new CustomEvent("yt2pod:unauthorized"));
     throw err;
   }
@@ -28,18 +29,18 @@ export async function api(path, { method = "GET", body, signal, keepalive } = {}
 }
 
 // --- formatting -------------------------------------------------------------------
-const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
-const compact = new Intl.NumberFormat("es", { notation: "compact", maximumFractionDigits: 1 });
+const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+const compact = new Intl.NumberFormat(lang, { notation: "compact", maximumFractionDigits: 1 });
 
 export function relDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
-  if (days <= 0) return "hoy";
-  if (days === 1) return "ayer";
+  if (days <= 0) return t("hoy");
+  if (days === 1) return t("ayer");
   if (days < 7) return rtf.format(-days, "day");
   const sameYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleDateString("es", sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString(lang, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
 }
 function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
 
@@ -65,10 +66,10 @@ export function clock(sec) {
 export function remaining(ep) {
   if (!ep.duration) return "";
   const left = ep.duration - (ep.position || 0);
-  return left < 60 ? "menos de 1 min" : `quedan ${humanDuration(left)}`;
+  return left < 60 ? t("menos de 1 min") : t("quedan {d}", { d: humanDuration(left) });
 }
 
-const decimal = new Intl.NumberFormat("es", { maximumFractionDigits: 1 });
+const decimal = new Intl.NumberFormat(lang, { maximumFractionDigits: 1 });
 export function fileSize(bytes) {
   if (!bytes) return "";
   if (bytes < 1e6) return `${Math.max(1, Math.round(bytes / 1e3))} kB`;
@@ -76,7 +77,10 @@ export function fileSize(bytes) {
   return `${decimal.format(bytes / 1e9)} GB`;
 }
 
-export const subscribers = (n) => (n ? `${compact.format(n)} suscriptores` : "");
+/** Playback speed as shown on the button: 1,25× in Spanish, 1.25× in English. */
+export const rate = (r) => (lang === "es" ? String(r).replace(".", ",") : String(r)) + "×";
+
+export const subscribers = (n) => (n ? t("{n} suscriptores", { n: compact.format(n) }) : "");
 
 export function initials(name = "") {
   return name.replace(/^@/, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";

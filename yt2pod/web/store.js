@@ -1,6 +1,7 @@
 // App state, data loading and the audio engine. One tiny store, subscribed to with useStore().
 import { useEffect, useState, useRef } from "/vendor/htm-preact.js";
 import { api, haptic } from "/lib.js";
+import { t } from "/i18n.js";
 
 const LS = {
   get(k, d) { try { const v = localStorage.getItem("yt2pod:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -139,7 +140,7 @@ export function removeEpisode(ep) {
   const timer = setTimeout(() => {
     if (!undone) api(`/api/episodes/${ep.id}`, { method: "DELETE" }).then(loadSubs).catch(() => loadEpisodes());
   }, 5200);
-  toast("Episodio eliminado", { label: "Deshacer", run: () => { undone = true; clearTimeout(timer); setState({ episodes: before }); } });
+  toast(t("Episodio eliminado"), { label: t("Deshacer"), run: () => { undone = true; clearTimeout(timer); setState({ episodes: before }); } });
 }
 
 /** Remove every episode already listened to, after the user confirmed it. */
@@ -285,7 +286,7 @@ function checkSleep() {
   if (left <= 0) {
     player.setSleep(null);
     audio.pause();
-    toast("Temporizador: reproducción en pausa");
+    toast(t("Temporizador: reproducción en pausa"));
   } else if (left < FADE && !audio.paused) {
     audio.volume = Math.max(0.05, left / FADE);
   }
@@ -315,7 +316,7 @@ audio.addEventListener("ended", () => { saveProgress({ played: true, force: true
 audio.addEventListener("error", () => {
   if (!currentEp) return;
   setPlayer({ playing: false, loading: false });
-  toast("No se pudo cargar el audio");
+  toast(t("No se pudo cargar el audio"));
 });
 window.addEventListener("pagehide", () => saveProgress({ force: true }));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveProgress({ force: true }); });
@@ -323,7 +324,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 export const player = {
   audio,
   load(ep, { autoplay = true } = {}) {
-    if (ep.download_status !== "done") { toast(ep.download_status === "failed" || ep.download_status === "gave_up" ? "La descarga falló; prueba a reintentarla" : "Aún se está descargando"); return; }
+    if (ep.download_status !== "done") { toast(ep.download_status === "failed" || ep.download_status === "gave_up" ? t("La descarga falló; prueba a reintentarla") : t("Aún se está descargando")); return; }
     if (currentEp?.id === ep.id) { if (autoplay) this.play(); return; }
     if (currentEp) saveProgress({ force: true });
     currentEp = ep;

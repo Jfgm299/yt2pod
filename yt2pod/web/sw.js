@@ -1,6 +1,6 @@
 // yt2pod service worker: the app shell works offline; API, RSS and audio always go to the network.
-const VERSION = "yt2pod-v0.3.0";
-const SHELL = ["/", "/styles.css", "/app.js", "/lib.js", "/store.js", "/vendor/htm-preact.js",
+const VERSION = "yt2pod-v0.4.0";
+const SHELL = ["/", "/styles.css", "/app.js", "/lib.js", "/store.js", "/i18n.js", "/vendor/htm-preact.js",
   "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon.svg"];
 const IMAGES = "yt2pod-images";
 

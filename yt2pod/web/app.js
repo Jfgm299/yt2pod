@@ -1,10 +1,11 @@
 // yt2pod PWA. Preact + htm, no build step.
 import { html, render, useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "/vendor/htm-preact.js";
-import { api, relDate, humanDuration, clock, remaining, subscribers, fileSize, initials, tint, Icon, spring, project, rubberband, haptic } from "/lib.js";
+import { api, relDate, humanDuration, clock, remaining, subscribers, fileSize, rate, initials, tint, Icon, spring, project, rubberband, haptic } from "/lib.js";
 import {
   useStore, getState, setState, boot, afterLogin, logout, loadEpisodes, loadSubs, addEpisodes, subscribe,
   unsubscribe, removeEpisode, removePlayed, setPlayed, retry, pollActivity, player, toast, dismissToast,
 } from "/store.js";
+import { t, tn, lang, langPref, setLang, themePref, setTheme } from "/i18n.js";
 
 // --- routing ---------------------------------------------------------------------------
 const scrollPos = new Map();
@@ -83,7 +84,7 @@ function Page({ title, large = true, revealAt = 0, left, right, children }) {
   </div>`;
 }
 
-const BackButton = ({ label = "Atrás" }) => html`<button class="nav-btn back" onClick=${() => (history.length > 1 ? history.back() : navigate("/"))}>
+const BackButton = ({ label = t("Atrás") }) => html`<button class="nav-btn back" onClick=${() => (history.length > 1 ? history.back() : navigate("/"))}>
   <${Icon.back}/>${label}</button>`;
 
 function Ring({ value }) {
@@ -101,16 +102,16 @@ function EpisodeAction({ ep }) {
   const isCurrent = p.id === ep.id;
   const st = ep.download_status;
   if (st === "queued" || st === "downloading") {
-    const label = st === "queued" ? "En cola" : `Descargando ${Math.round(ep.download_progress || 0)} %`;
+    const label = st === "queued" ? t("En cola") : t("Descargando {n} %", { n: Math.round(ep.download_progress || 0) });
     return html`<span class="round" role="img" aria-label=${label} title=${label}>
       <${Ring} value=${st === "downloading" && ep.download_progress ? ep.download_progress : null}/><span class="stopsq" style="opacity:.0"></span></span>`;
   }
   if (st === "failed" || st === "gave_up") {
-    return html`<button class="round" style="color:var(--danger)" aria-label="Reintentar descarga" title=${ep.download_error || ""}
+    return html`<button class="round" style="color:var(--danger)" aria-label=${t("Reintentar descarga")} title=${t(ep.download_error || "")}
       onClick=${(e) => { e.stopPropagation(); retry(ep); }}><${Icon.refresh} class="glyph"/></button>`;
   }
   const playing = isCurrent && p.playing;
-  return html`<button class=${"round" + (isCurrent ? " done" : "")} aria-label=${playing ? "Pausar" : "Reproducir"}
+  return html`<button class=${"round" + (isCurrent ? " done" : "")} aria-label=${playing ? t("Pausar") : t("Reproducir")}
     onClick=${(e) => { e.stopPropagation(); isCurrent ? player.toggle() : player.load(ep); }}>
     ${playing ? html`<${Icon.pause} class="glyph"/>` : html`<${Icon.play} class="glyph" style="margin-left:2px"/>`}
   </button>`;
@@ -118,11 +119,11 @@ function EpisodeAction({ ep }) {
 
 function statusLine(ep) {
   const st = ep.download_status;
-  if (st === "queued") return html`<span>En cola</span>`;
-  if (st === "downloading") return html`<span class="num">Descargando… ${ep.download_progress ? Math.round(ep.download_progress) + " %" : ""}</span>`;
-  if (st === "failed") return html`<span class="warn">${ep.download_error || "Error al descargar"} · se reintentará</span>`;
-  if (st === "gave_up") return html`<span class="warn">${ep.download_error || "No se pudo descargar"}</span>`;
-  if (ep.played) return html`<span>Escuchado</span>`;
+  if (st === "queued") return html`<span>${t("En cola")}</span>`;
+  if (st === "downloading") return html`<span class="num">${ep.download_progress ? t("Descargando {n} %", { n: Math.round(ep.download_progress) }) : t("Descargando…")}</span>`;
+  if (st === "failed") return html`<span class="warn">${t(ep.download_error || "Error al descargar")} · ${t("se reintentará")}</span>`;
+  if (st === "gave_up") return html`<span class="warn">${t(ep.download_error || "No se pudo descargar")}</span>`;
+  if (ep.played) return html`<span>${t("Escuchado")}</span>`;
   if (ep.position > 5) return html`<span>${remaining(ep)}</span>`;
   return html`<span>${humanDuration(ep.duration)}</span>`;
 }
@@ -138,7 +139,7 @@ function EpisodeRow({ ep, showChannel = true }) {
     </div>
     <div class="trail">
       <${EpisodeAction} ep=${ep}/>
-      <button class="more-btn" aria-label="Más opciones" onClick=${() => openEpisodeActions(ep)}><${Icon.more}/></button>
+      <button class="more-btn" aria-label=${t("Más opciones")} onClick=${() => openEpisodeActions(ep)}><${Icon.more}/></button>
     </div>
   </div>`;
 }
@@ -187,12 +188,12 @@ function ListenScreen() {
     };
   }, [episodes]);
 
-  return html`<${Page} title="Escuchar">
+  return html`<${Page} title=${t("Escuchar")}>
     ${blocked ? html`<div class="banner" style="margin-top:6px"><${Icon.warn}/><div>
-      <strong>YouTube está bloqueando las descargas.</strong> Se arregla subiendo tus cookies de YouTube. <a href="/ajustes" onClick=${link("/ajustes")}>Ir a Ajustes</a></div></div>` : null}
+      <strong>${t("YouTube está bloqueando las descargas.")}</strong> ${t("Se arregla subiendo tus cookies de YouTube.")} <a href="/ajustes" onClick=${link("/ajustes")}>${t("Ir a Ajustes")}</a></div></div>` : null}
 
     ${cont.length ? html`<section class="section" style="margin-top:8px">
-      <div class="section-head"><h2 class="t-title3">Continuar</h2></div>
+      <div class="section-head"><h2 class="t-title3">${t("Continuar")}</h2></div>
       <div class="shelf">${cont.map((ep) => html`<button class="card" key=${ep.id} onClick=${() => player.load(ep)}>
         <div style="position:relative"><${Thumb} ep=${ep} showDuration=${false}/>
           <span class="play-chip"><${Icon.play}/>${remaining(ep)}</span></div>
@@ -202,17 +203,17 @@ function ListenScreen() {
     </section>` : null}
 
     <section class="section" style=${cont.length ? "" : "margin-top:8px"}>
-      ${cont.length || fresh.length ? html`<div class="section-head"><h2 class="t-title3">Nuevos episodios</h2></div>` : null}
+      ${cont.length || fresh.length ? html`<div class="section-head"><h2 class="t-title3">${t("Nuevos episodios")}</h2></div>` : null}
       ${!loaded && !episodes.length ? html`<${SkeletonRows}/>`
         : fresh.length ? html`<div class="ep-list">${fresh.map((ep) => html`<${EpisodeRow} key=${ep.id} ep=${ep}/>`)}</div>`
-        : !subs.length && !episodes.length ? html`<${Empty} icon=${Icon.listen} title="Escucha tus canales como podcasts"
-              text="Sigue un canal y yt2pod descargará el audio de cada vídeo nuevo. Aparecerán aquí, listos para escuchar.">
-              <button class="btn pill" style="margin-top:10px" onClick=${() => navigate("/buscar")}>Buscar canales</button><//>`
-        : html`<${Empty} title="Estás al día" text="Cuando tus canales suban vídeos nuevos aparecerán aquí."/>`}
+        : !subs.length && !episodes.length ? html`<${Empty} icon=${Icon.listen} title=${t("Escucha tus canales como podcasts")}
+              text=${t("Sigue un canal y yt2pod descargará el audio de cada vídeo nuevo. Aparecerán aquí, listos para escuchar.")}>
+              <button class="btn pill" style="margin-top:10px" onClick=${() => navigate("/buscar")}>${t("Buscar canales")}</button><//>`
+        : html`<${Empty} title=${t("Estás al día")} text=${t("Cuando tus canales suban vídeos nuevos aparecerán aquí.")}/>`}
     </section>
 
     ${played.length ? html`<section class="section">
-      <button class="link-btn small" onClick=${() => setShowPlayed(!showPlayed)}>${showPlayed ? "Ocultar escuchados" : `Ver escuchados (${played.length})`}</button>
+      <button class="link-btn small" onClick=${() => setShowPlayed(!showPlayed)}>${showPlayed ? t("Ocultar escuchados") : t("Ver escuchados ({n})", { n: played.length })}</button>
       ${showPlayed ? html`<div class="ep-list" style="margin-top:6px">${played.map((ep) => html`<${EpisodeRow} key=${ep.id} ep=${ep}/>`)}</div>` : null}
     </section>` : null}
   <//>`;
@@ -222,16 +223,16 @@ function ListenScreen() {
 function ChannelsScreen() {
   const subs = useStore((s) => s.subs);
   const loaded = useStore((s) => s.subsLoaded);
-  const checkNow = async () => { await api("/api/check", { method: "POST" }); toast("Buscando vídeos nuevos…"); setTimeout(() => loadEpisodes().then(loadSubs), 8000); };
-  return html`<${Page} title="Canales" right=${html`
-      <button class="nav-btn" aria-label="Buscar vídeos nuevos ahora" title="Buscar vídeos nuevos ahora" onClick=${checkNow}><${Icon.refresh}/></button>
-      <button class="nav-btn" aria-label="Añadir canal" onClick=${() => navigate("/buscar")}><${Icon.plus}/></button>`}>
+  const checkNow = async () => { await api("/api/check", { method: "POST" }); toast(t("Buscando vídeos nuevos…")); setTimeout(() => loadEpisodes().then(loadSubs), 8000); };
+  return html`<${Page} title=${t("Canales")} right=${html`
+      <button class="nav-btn" aria-label=${t("Buscar vídeos nuevos ahora")} title=${t("Buscar vídeos nuevos ahora")} onClick=${checkNow}><${Icon.refresh}/></button>
+      <button class="nav-btn" aria-label=${t("Añadir canal")} onClick=${() => navigate("/buscar")}><${Icon.plus}/></button>`}>
     ${!loaded && !subs.length ? html`<div class="ch-grid">${[0, 1, 2, 3].map((i) => html`<div class="ch-tile" key=${i}><div class="avatar skel" style="width:88px;height:88px"></div><div class="skel" style="height:12px;width:70%"></div></div>`)}</div>`
-      : !subs.length ? html`<${Empty} icon=${Icon.channels} title="Aún no sigues ningún canal" text="Busca un canal por su nombre o pega su enlace de YouTube.">
-          <button class="btn pill" style="margin-top:10px" onClick=${() => navigate("/buscar")}>Buscar canales</button><//>`
+      : !subs.length ? html`<${Empty} icon=${Icon.channels} title=${t("Aún no sigues ningún canal")} text=${t("Busca un canal por su nombre o pega su enlace de YouTube.")}>
+          <button class="btn pill" style="margin-top:10px" onClick=${() => navigate("/buscar")}>${t("Buscar canales")}</button><//>`
       : html`<div class="ch-grid">${subs.map((c) => html`<a class="ch-tile" key=${c.id} href=${"/canal/" + c.id} onClick=${link("/canal/" + c.id)}>
           <${Avatar} src=${c.avatar} name=${c.title} size=${88}/>
-          ${c.unplayed ? html`<span class="badge" aria-label=${c.unplayed + " sin escuchar"}>${c.unplayed}</span>` : null}
+          ${c.unplayed ? html`<span class="badge" aria-label=${t("{n} sin escuchar", { n: c.unplayed })}>${c.unplayed}</span>` : null}
           <span class="name clamp2" style="color:var(--label)">${c.title}</span>
         </a>`)}</div>`}
   <//>`;
@@ -267,26 +268,26 @@ function SearchScreen() {
   }, [q]);
 
   const follow = async (c) => {
-    try { await subscribe(c); toast(`Sigues a ${c.title}`); } catch (e) { toast(e.message); }
+    try { await subscribe(c); toast(t("Sigues a {c}", { c: c.title })); } catch (e) { toast(e.message); }
   };
 
-  return html`<${Page} title="Buscar">
+  return html`<${Page} title=${t("Buscar")}>
     <div class="searchbar" style="margin:2px 0 10px">
       <${Icon.search} class="glass"/>
       <input ref=${input} class="field" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off"
-        spellcheck=${false} placeholder="Canal, @usuario o enlace" aria-label="Buscar canales" value=${q} onInput=${(e) => setQ(e.target.value)}/>
+        spellcheck=${false} placeholder=${t("Canal, @usuario o enlace")} aria-label=${t("Buscar canales")} value=${q} onInput=${(e) => setQ(e.target.value)}/>
       ${loading ? html`<span class="clear"><span class="spinner" style="width:16px;height:16px;border-width:2px"></span></span>`
-        : q ? html`<button class="clear" aria-label="Borrar" onClick=${() => { setQ(""); input.current.focus(); }}><${Icon.xcircle} style="width:18px;height:18px"/></button>` : null}
+        : q ? html`<button class="clear" aria-label=${t("Borrar")} onClick=${() => { setQ(""); input.current.focus(); }}><${Icon.xcircle} style="width:18px;height:18px"/></button>` : null}
     </div>
     ${error ? html`<div class="banner"><${Icon.warn}/><div>${error}</div></div>` : null}
     ${q.trim().length < 2 ? html`
-      ${subs.length ? html`<section class="section" style="margin-top:14px"><div class="section-head"><h2 class="t-headline">Tus canales</h2></div>
+      ${subs.length ? html`<section class="section" style="margin-top:14px"><div class="section-head"><h2 class="t-headline">${t("Tus canales")}</h2></div>
         <div>${subs.slice(0, 8).map((c) => html`<${ResultRow} key=${c.id} c=${c} following=${true}/>`)}</div></section>`
-      : html`<p class="dim t-sub" style="margin:18px 4px">Escribe el nombre de un canal, su @usuario o pega el enlace de cualquiera de sus páginas.</p>`}`
+      : html`<p class="dim t-sub" style="margin:18px 4px">${t("Escribe el nombre de un canal, su @usuario o pega el enlace de cualquiera de sus páginas.")}</p>`}`
     : html`<div class=${"results" + (loading ? " loading" : "")}>
         ${loading && !results.length ? [0, 1, 2].map((i) => html`<div class="result" key=${i}><div class="avatar skel" style="width:52px;height:52px"></div><div><div class="skel" style="height:15px;width:60%"></div><div class="skel" style="height:12px;width:40%;margin-top:6px"></div></div></div>`)
           : results.map((c) => html`<${ResultRow} key=${c.id} c=${c} following=${followed.has(c.id)} onFollow=${() => follow(c)}/>`)}
-        ${!loading && !error && results.length === 0 ? html`<p class="dim t-sub" style="margin:18px 4px">Ningún canal coincide con «${q.trim()}».</p>` : null}
+        ${!loading && !error && results.length === 0 ? html`<p class="dim t-sub" style="margin:18px 4px">${t("Ningún canal coincide con «{q}».", { q: q.trim() })}</p>` : null}
       </div>`}
   <//>`;
 }
@@ -299,15 +300,15 @@ function ResultRow({ c, following, onFollow }) {
       <div class="t-headline clamp1">${c.title}${c.verified ? html`<${Icon.verified} class="verified"/>` : null}</div>
       <div class="t-foot dim clamp1">${[c.handle, subscribers(c.subscribers)].filter(Boolean).join(" · ")}</div>
     </div>
-    ${following ? html`<button class="btn small gray" onClick=${go}>Siguiendo</button>`
-      : onFollow ? html`<button class="btn small tinted" onClick=${onFollow}>Seguir</button>` : null}
+    ${following ? html`<button class="btn small gray" onClick=${go}>${t("Siguiendo")}</button>`
+      : onFollow ? html`<button class="btn small tinted" onClick=${onFollow}>${t("Seguir")}</button>` : null}
   </div>`;
 }
 
 // --- screens: Channel --------------------------------------------------------------------------
 const channelCache = new Map();
-const DURATIONS = [{ value: 0, label: "Todos" }, { value: 10, label: "+10 min" }, { value: 20, label: "+20 min" }, { value: 45, label: "+45 min" }];
-const VIEWS = [{ value: "all", label: "Todos" }, { value: "long", label: "Largos" }, { value: "short", label: "Cortos" }];
+const DURATIONS = [{ value: 0, label: t("Todos") }, { value: 10, label: "+10 min" }, { value: 20, label: "+20 min" }, { value: 45, label: "+45 min" }];
+const VIEWS = [{ value: "all", label: t("Todos") }, { value: "long", label: t("Largos") }, { value: "short", label: t("Cortos") }];
 const LONG = 20 * 60;
 
 function ChannelScreen({ id }) {
@@ -332,7 +333,7 @@ function ChannelScreen({ id }) {
 
   if (!data) {
     return html`<${Page} title="" large=${false} left=${html`<${BackButton}/>`}>
-      ${error ? html`<${Empty} icon=${Icon.warn} title="No se pudo abrir el canal" text=${error}><button class="btn pill" onClick=${() => load()}>Reintentar</button><//>`
+      ${error ? html`<${Empty} icon=${Icon.warn} title=${t("No se pudo abrir el canal")} text=${error}><button class="btn pill" onClick=${() => load()}>${t("Reintentar")}</button><//>`
         : html`<div class="ch-hero"><div class="avatar skel" style="width:112px;height:112px"></div><div class="skel" style="height:24px;width:180px"></div></div><${SkeletonRows} n=${5}/>`}
     <//>`;
   }
@@ -355,27 +356,27 @@ function ChannelScreen({ id }) {
   const add = async (ids) => {
     try {
       await addEpisodes(ids);
-      toast(ids.length === 1 ? "Añadido a Escuchar" : `${ids.length} episodios añadidos a Escuchar`);
+      toast(ids.length === 1 ? t("Añadido a Escuchar") : t("{n} episodios añadidos a Escuchar", { n: ids.length }));
       setSelecting(false); setSelected(new Set()); load();
     } catch (e) { toast(e.message); }
   };
   const follow = async () => {
     try {
       await subscribe(ch, { auto_download: true, rules: { min_minutes: 0 } });
-      toast("Te bajaremos sus próximos vídeos");
+      toast(t("Te bajaremos sus próximos vídeos"));
     } catch (e) { toast(e.message); }
   };
   const channelMenu = () => openActions({
     title: ch.title,
     actions: [
-      { label: "Actualizar lista de vídeos", run: () => load(true) },
-      { label: "Abrir en YouTube", run: () => open(ch.url || `https://www.youtube.com/channel/${ch.id}`, "_blank", "noopener") },
-      ...(following ? [{ label: "Dejar de seguir", destructive: true, run: async () => { await unsubscribe(ch.id); toast(`Has dejado de seguir a ${ch.title}`); } }] : []),
+      { label: t("Actualizar lista de vídeos"), run: () => load(true) },
+      { label: t("Abrir en YouTube"), run: () => open(ch.url || `https://www.youtube.com/channel/${ch.id}`, "_blank", "noopener") },
+      ...(following ? [{ label: t("Dejar de seguir"), destructive: true, run: async () => { await unsubscribe(ch.id); toast(t("Has dejado de seguir a {c}", { c: ch.title })); } }] : []),
     ],
   });
 
   return html`<${Page} title=${ch.title} large=${false} revealAt=${150} left=${html`<${BackButton}/>`}
-      right=${html`<button class="nav-btn" aria-label="Más opciones" onClick=${channelMenu}><${Icon.more}/></button>`}>
+      right=${html`<button class="nav-btn" aria-label=${t("Más opciones")} onClick=${channelMenu}><${Icon.more}/></button>`}>
     <div class="ch-hero">
       <${Avatar} src=${ch.avatar} name=${ch.title} size=${112}/>
       <div>
@@ -383,8 +384,8 @@ function ChannelScreen({ id }) {
         <div class="t-sub dim">${[ch.handle, subscribers(ch.subscribers)].filter(Boolean).join(" · ")}</div>
         ${ch.description ? html`<p class="ch-desc clamp2">${ch.description}</p>` : null}
         <div class="actions">
-          ${following ? html`<button class="btn pill gray" onClick=${channelMenu}><${Icon.check} style="width:16px;height:16px"/>Siguiendo</button>`
-            : html`<button class="btn pill" onClick=${follow}><${Icon.plus} style="width:16px;height:16px"/>Seguir</button>`}
+          ${following ? html`<button class="btn pill gray" onClick=${channelMenu}><${Icon.check} style="width:16px;height:16px"/>${t("Siguiendo")}</button>`
+            : html`<button class="btn pill" onClick=${follow}><${Icon.plus} style="width:16px;height:16px"/>${t("Seguir")}</button>`}
         </div>
       </div>
     </div>
@@ -393,25 +394,25 @@ function ChannelScreen({ id }) {
 
     <section class="section">
       <div class="section-head">
-        <h2 class="t-title3">Vídeos</h2>
-        ${addable.length ? html`<button class="link-btn small" onClick=${() => { setSelecting(!selecting); setSelected(new Set()); }}>${selecting ? "Cancelar" : "Seleccionar"}</button>` : null}
+        <h2 class="t-title3">${t("Vídeos")}</h2>
+        ${addable.length ? html`<button class="link-btn small" onClick=${() => { setSelecting(!selecting); setSelected(new Set()); }}>${selecting ? t("Cancelar") : t("Seleccionar")}</button>` : null}
       </div>
-      <div style="margin-bottom:6px"><${Segmented} label="Filtrar vídeos" options=${VIEWS} value=${view} onChange=${setView}/></div>
+      <div style="margin-bottom:6px"><${Segmented} label=${t("Filtrar vídeos")} options=${VIEWS} value=${view} onChange=${setView}/></div>
       ${selecting ? html`<div class="chips" style="margin:10px 0 4px">
-        <button class="chip" onClick=${() => setSelected(new Set(addable.map((v) => v.id)))}>Todos (${addable.length})</button>
-        <button class="chip" onClick=${() => setSelected(new Set(addable.filter((v) => (v.duration || 0) >= LONG).map((v) => v.id)))}>Solo los de +20 min</button>
-        ${selected.size ? html`<button class="chip" onClick=${() => setSelected(new Set())}>Ninguno</button>` : null}
+        <button class="chip" onClick=${() => setSelected(new Set(addable.map((v) => v.id)))}>${t("Todos ({n})", { n: addable.length })}</button>
+        <button class="chip" onClick=${() => setSelected(new Set(addable.filter((v) => (v.duration || 0) >= LONG).map((v) => v.id)))}>${t("Solo los de +20 min")}</button>
+        ${selected.size ? html`<button class="chip" onClick=${() => setSelected(new Set())}>${t("Ninguno")}</button>` : null}
       </div>` : null}
       <div class="ep-list">
         ${shown.map((v) => html`<${VideoRow} key=${v.id} v=${v} selecting=${selecting} selected=${selected.has(v.id)}
             onToggle=${() => toggle(v)} onAdd=${() => add([v.id])}/>`)}
       </div>
-      ${!shown.length ? html`<p class="dim t-sub" style="margin:16px 4px">No hay vídeos en esta vista.</p>` : null}
+      ${!shown.length ? html`<p class="dim t-sub" style="margin:16px 4px">${t("No hay vídeos en esta vista.")}</p>` : null}
     </section>
     ${selecting ? html`<div style="height:72px" aria-hidden="true"></div>` : null}
     ${selecting && selected.size ? html`<div class="selbar">
-      <span class="t-sub" style="font-weight:600">${selected.size} seleccionado${selected.size === 1 ? "" : "s"}</span>
-      <button class="btn small" onClick=${() => add([...selected])}>Añadir a Escuchar</button>
+      <span class="t-sub" style="font-weight:600">${tn(selected.size, "1 seleccionado", "{n} seleccionados")}</span>
+      <button class="btn small" onClick=${() => add([...selected])}>${t("Añadir a Escuchar")}</button>
     </div>` : null}
   <//>`;
 }
@@ -428,12 +429,12 @@ function VideoRow({ v, selecting, selected, onToggle, onAdd }) {
       <span class="title clamp2">${v.title}</span>
       <span class="meta">${meta}
         ${inLib && (v.download_status !== "done" || v.played || v.position > 5) ? html`<span aria-hidden="true">·</span>${statusLine(v)}`
-          : v.state === "skipped" ? html`<span class="note">· No se bajó: ${v.reason}</span>` : null}
+          : v.state === "skipped" ? html`<span class="note">· ${t("No se bajó: {r}", { r: t(v.reason) })}</span>` : null}
       </span>
     </div>
     ${selecting ? null : html`<div class="trail">
       ${inLib ? html`<${EpisodeAction} ep=${v}/>`
-        : html`<button class="round add" aria-label="Añadir a Escuchar" onClick=${(e) => { e.stopPropagation(); onAdd(); }}><${Icon.plus} class="glyph"/></button>`}
+        : html`<button class="round add" aria-label=${t("Añadir a Escuchar")} onClick=${(e) => { e.stopPropagation(); onAdd(); }}><${Icon.plus} class="glyph"/></button>`}
     </div>`}
   </div>`;
 }
@@ -449,21 +450,21 @@ function AutoDownload({ sub }) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => subscribe({ id: sub.id }, { auto_download: nextAuto, rules: nextRules }).catch((e) => toast(e.message)), 350);
   };
-  const durationLabel = rules.min_minutes ? `de más de ${rules.min_minutes} min` : "";
+
   return html`<section class="section">
     <div class="group">
       <div class="cell">
-        <div class="grow"><div>Descargar vídeos nuevos</div>
-          <div class="t-foot dim">${auto ? `Cada vídeo nuevo ${durationLabel} aparecerá en Escuchar.` : "Solo se descargará lo que añadas a mano."}</div></div>
-        <${Switch} label="Descargar vídeos nuevos" checked=${auto} onChange=${(v) => save(v, rules)}/>
+        <div class="grow"><div>${t("Descargar vídeos nuevos")}</div>
+          <div class="t-foot dim">${!auto ? t("Solo se descargará lo que añadas a mano.") : rules.min_minutes ? t("Cada vídeo nuevo de más de {n} min aparecerá en Escuchar.", { n: rules.min_minutes }) : t("Cada vídeo nuevo aparecerá en Escuchar.")}</div></div>
+        <${Switch} label=${t("Descargar vídeos nuevos")} checked=${auto} onChange=${(v) => save(v, rules)}/>
       </div>
       ${auto ? html`<div class="rules">
-        <div><label class="t-foot">Duración</label>
-          <${Segmented} label="Duración mínima" options=${DURATIONS} value=${rules.min_minutes || 0} onChange=${(v) => save(auto, { ...rules, min_minutes: v })}/></div>
+        <div><label class="t-foot">${t("Duración")}</label>
+          <${Segmented} label=${t("Duración mínima")} options=${DURATIONS} value=${rules.min_minutes || 0} onChange=${(v) => save(auto, { ...rules, min_minutes: v })}/></div>
         ${showWords ? html`
-          <${WordChips} label="Solo si el título contiene" words=${rules.include_words || []} onChange=${(w) => save(auto, { ...rules, include_words: w })}/>
-          <${WordChips} label="Nunca si el título contiene" words=${rules.exclude_words || []} onChange=${(w) => save(auto, { ...rules, exclude_words: w })}/>`
-        : html`<button class="link-btn small" style="align-self:flex-start" onClick=${() => setShowWords(true)}>Filtrar por palabras del título…</button>`}
+          <${WordChips} label=${t("Solo si el título contiene")} words=${rules.include_words || []} onChange=${(w) => save(auto, { ...rules, include_words: w })}/>
+          <${WordChips} label=${t("Nunca si el título contiene")} words=${rules.exclude_words || []} onChange=${(w) => save(auto, { ...rules, exclude_words: w })}/>`
+        : html`<button class="link-btn small" style="align-self:flex-start" onClick=${() => setShowWords(true)}>${t("Filtrar por palabras del título…")}</button>`}
       </div>` : null}
     </div>
   </section>`;
@@ -478,8 +479,8 @@ function WordChips({ label, words, onChange }) {
   };
   return html`<div><label class="t-foot">${label}</label>
     <div class="chips">
-      ${words.map((w) => html`<button class="chip" key=${w} aria-label=${"Quitar " + w} onClick=${() => onChange(words.filter((x) => x !== w))}>${w}<${Icon.x} class="x"/></button>`)}
-      <input class="chip-input" placeholder="Añadir palabra" value=${draft} enterkeyhint="done"
+      ${words.map((w) => html`<button class="chip" key=${w} aria-label=${t("Quitar {w}", { w })} onClick=${() => onChange(words.filter((x) => x !== w))}>${w}<${Icon.x} class="x"/></button>`)}
+      <input class="chip-input" placeholder=${t("Añadir palabra")} value=${draft} enterkeyhint="done"
         onInput=${(e) => setDraft(e.target.value)} onKeyDown=${(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(); } }} onBlur=${commit}/>
     </div></div>`;
 }
@@ -499,34 +500,38 @@ function SettingsScreen() {
   }, []);
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const copyRss = async () => { try { await navigator.clipboard.writeText(me.rss_url); toast("Enlace copiado"); } catch { prompt("Copia el enlace", me.rss_url); } };
-  const lastCheck = me?.watcher?.last_run ? relDateTime(me.watcher.last_run) : "todavía no";
+  const copyRss = async () => { try { await navigator.clipboard.writeText(me.rss_url); toast(t("Enlace copiado")); } catch { prompt(t("Copia el enlace"), me.rss_url); } };
+  const lastCheck = me?.watcher?.last_run ? relDateTime(me.watcher.last_run) : t("todavía no");
 
-  return html`<${Page} title="Ajustes">
+  return html`<${Page} title=${t("Ajustes")}>
     <section class="section" style="margin-top:8px">
       <div class="group">
         <div class="cell"><${Avatar} name=${user.username} size=${40}/><div class="grow"><div class="t-headline">${user.username}</div>
-          <div class="t-foot dim">Tu progreso se sincroniza en todos tus dispositivos</div></div></div>
-        <button class="cell" onClick=${() => setForm(form === "password" ? null : "password")}><span class="grow">Cambiar contraseña</span><${Icon.chev} class="chev"/></button>
+          <div class="t-foot dim">${t("Tu progreso se sincroniza en todos tus dispositivos")}</div></div></div>
+        <button class="cell" onClick=${() => setForm(form === "password" ? null : "password")}><span class="grow">${t("Cambiar contraseña")}</span><${Icon.chev} class="chev"/></button>
         ${form === "password" ? html`<${PasswordForm} done=${() => setForm(null)}/>` : null}
-        <button class="cell" onClick=${logout}><span class="grow" style="color:var(--danger)">Cerrar sesión</span></button>
+        <button class="cell" onClick=${logout}><span class="grow" style="color:var(--danger)">${t("Cerrar sesión")}</span></button>
       </div>
     </section>
 
+    <${AppearanceSection}/>
+
     ${!standalone ? html`<section class="section">
-      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Instalar la app</h2></div>
+      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">${t("Instalar la app")}</h2></div>
       <div class="group"><div class="cell"><div class="grow t-sub">
-        ${ios ? html`En el iPhone: pulsa <strong>Compartir</strong> en Safari y luego <strong>Añadir a pantalla de inicio</strong>.`
-          : installPrompt ? html`Instálala para abrirla como una app, con su icono y a pantalla completa.`
+        ${ios ? (lang === "en" ? html`On iPhone: tap <strong>Share</strong> in Safari, then <strong>Add to Home Screen</strong>.`
+            : html`En el iPhone: pulsa <strong>Compartir</strong> en Safari y luego <strong>Añadir a pantalla de inicio</strong>.`)
+          : installPrompt ? t("Instálala para abrirla como una app, con su icono y a pantalla completa.")
+          : lang === "en" ? html`In Chrome or Edge, use <strong>Install app</strong> in the address bar or the menu. On Android: menu ⋮ → <strong>Add to Home screen</strong>.`
           : html`En Chrome o Edge, usa <strong>Instalar app</strong> en la barra de direcciones o en el menú. En Android: menú ⋮ → <strong>Añadir a pantalla de inicio</strong>.`}
-        </div>${installPrompt ? html`<button class="btn small" onClick=${() => installPrompt.prompt()}>Instalar</button>` : null}</div></div>
+        </div>${installPrompt ? html`<button class="btn small" onClick=${() => installPrompt.prompt()}>${t("Instalar")}</button>` : null}</div></div>
     </section>` : null}
 
     <section class="section">
-      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Otras apps de podcasts</h2></div>
-      <div class="group"><div class="cell"><div class="grow"><div>Feed RSS privado</div><div class="t-foot dim clamp1">${me?.rss_url || "…"}</div></div>
-        <button class="btn small tinted" disabled=${!me} onClick=${copyRss}>Copiar</button></div></div>
-      <p class="foot-note">Pégalo en Overcast, Pocket Casts o Apple Podcasts si prefieres escuchar allí. Es secreto: quien lo tenga puede escuchar tus episodios. El progreso de esas apps no se sincroniza con yt2pod.</p>
+      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">${t("Otras apps de podcasts")}</h2></div>
+      <div class="group"><div class="cell"><div class="grow"><div>${t("Feed RSS privado")}</div><div class="t-foot dim clamp1">${me?.rss_url || "…"}</div></div>
+        <button class="btn small tinted" disabled=${!me} onClick=${copyRss}>${t("Copiar")}</button></div></div>
+      <p class="foot-note">${t("Pégalo en Overcast, Pocket Casts o Apple Podcasts si prefieres escuchar allí. Es secreto: quien lo tenga puede escuchar tus episodios. El progreso de esas apps no se sincroniza con yt2pod.")}</p>
     </section>
 
     <${StorageSection} admin=${user.is_admin}/>
@@ -534,26 +539,44 @@ function SettingsScreen() {
     ${user.is_admin ? html`<${CookiesSection}/>` : null}
 
     <section class="section">
-      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Servidor</h2></div>
+      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">${t("Servidor")}</h2></div>
       <div class="group">
-        <div class="cell"><span class="grow">Última comprobación</span><span class="cell-value">${lastCheck}</span></div>
-        <div class="cell"><span class="grow">Frecuencia</span><span class="cell-value">cada ${me ? humanDuration(me.check_interval) : "…"}</span></div>
-        <div class="cell"><span class="grow">Formato de audio</span><span class="cell-value">${me?.audio_format === "m4a" ? "AAC (m4a), sin recodificar" : me?.audio_format || "…"}</span></div>
+        <div class="cell"><span class="grow">${t("Última comprobación")}</span><span class="cell-value">${lastCheck}</span></div>
+        <div class="cell"><span class="grow">${t("Frecuencia")}</span><span class="cell-value">${me ? t("cada {d}", { d: humanDuration(me.check_interval) }) : "…"}</span></div>
+        <div class="cell"><span class="grow">${t("Formato de audio")}</span><span class="cell-value">${me?.audio_format === "m4a" ? t("AAC (m4a), sin recodificar") : me?.audio_format || "…"}</span></div>
       </div>
     </section>
 
     ${users ? html`<section class="section">
-      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Cuentas</h2></div>
+      <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">${t("Cuentas")}</h2></div>
       <div class="group">
-        ${users.map((u) => html`<div class="cell" key=${u.id}><${Avatar} name=${u.username} size=${32}/><span class="grow">${u.username}</span>${u.is_admin ? html`<span class="cell-value t-foot">Administrador</span>` : null}</div>`)}
-        <button class="cell" onClick=${() => setForm(form === "user" ? null : "user")}><span class="grow" style="color:var(--accent)">Añadir cuenta</span></button>
+        ${users.map((u) => html`<div class="cell" key=${u.id}><${Avatar} name=${u.username} size=${32}/><span class="grow">${u.username}</span>${u.is_admin ? html`<span class="cell-value t-foot">${t("Administrador")}</span>` : null}</div>`)}
+        <button class="cell" onClick=${() => setForm(form === "user" ? null : "user")}><span class="grow" style="color:var(--accent)">${t("Añadir cuenta")}</span></button>
         ${form === "user" ? html`<${NewUserForm} done=${(u) => { setForm(null); if (u) setUsers([...users, u]); }}/>` : null}
       </div>
-      <p class="foot-note">Cada cuenta tiene sus canales y su progreso. Si dos cuentas siguen el mismo canal, el audio se descarga una sola vez.</p>
+      <p class="foot-note">${t("Cada cuenta tiene sus canales y su progreso. Si dos cuentas siguen el mismo canal, el audio se descarga una sola vez.")}</p>
     </section>` : null}
 
     <p class="foot-note" style="text-align:center;margin:28px 0 8px">yt2pod ${getState().session.version || ""}</p>
   <//>`;
+}
+
+/** Theme and language, saved on this device. */
+function AppearanceSection() {
+  const [theme, setThemeState] = useState(themePref());
+  const options = (list) => list.map(([value, label]) => ({ value, label }));
+  return html`<section class="section">
+    <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">${t("Apariencia")}</h2></div>
+    <div class="group">
+      <div class="cell pref"><span class="pref-label">${t("Tema")}</span>
+        <${Segmented} label=${t("Tema")} value=${theme} onChange=${(v) => { setTheme(v); setThemeState(v); }}
+          options=${options([["auto", t("Automático")], ["light", t("Claro")], ["dark", t("Oscuro")]])}/></div>
+      <div class="cell pref"><span class="pref-label">${t("Idioma")}</span>
+        <${Segmented} label=${t("Idioma")} value=${langPref} onChange=${setLang}
+          options=${options([["auto", t("Automático")], ["es", "Español"], ["en", "English"]])}/></div>
+    </div>
+    <p class="foot-note">${t("Automático sigue el ajuste del sistema y el idioma del navegador. Se guarda en este dispositivo.")}</p>
+  </section>`;
 }
 
 /** What the downloaded audio takes, with ways to free space. */
@@ -565,29 +588,29 @@ function StorageSection({ admin }) {
   const key = episodes.map((e) => `${e.id}${e.download_status}${e.played}`).join();
   useEffect(() => { api("/api/storage").then(setSt).catch(() => {}); }, [key]);
   const clearPlayed = () => openActions({
-    title: `${st.played_count === 1 ? "Se borrará 1 episodio ya escuchado" : `Se borrarán ${st.played_count} episodios ya escuchados`} (${fileSize(st.played_bytes)}). No se puede deshacer.`,
-    actions: [{ label: "Borrar escuchados", destructive: true, run: async () => {
-      try { const n = await removePlayed(); toast(`${n} episodio${n === 1 ? "" : "s"} borrado${n === 1 ? "" : "s"}`); } catch (e) { toast(e.message); }
+    title: tn(st.played_count, "Se borrará 1 episodio ya escuchado ({s}). No se puede deshacer.", "Se borrarán {n} episodios ya escuchados ({s}). No se puede deshacer.", { s: fileSize(st.played_bytes) }),
+    actions: [{ label: t("Borrar escuchados"), destructive: true, run: async () => {
+      try { const n = await removePlayed(); toast(tn(n, "1 episodio borrado", "{n} episodios borrados")); } catch (e) { toast(e.message); }
     } }],
   });
   const biggest = episodes.filter((e) => e.download_status === "done" && e.filesize).sort((a, b) => b.filesize - a.filesize);
-  const head = html`<div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Almacenamiento</h2></div>`;
+  const head = html`<div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">${t("Almacenamiento")}</h2></div>`;
   return html`<section class="section">
     ${head}
     <div class="group">
-      <div class="cell"><span class="grow">Tus episodios</span><span class="cell-value num">${st ? `${st.count} · ${fileSize(st.bytes) || "0 MB"}` : "…"}</span></div>
-      <div class="cell"><div class="grow"><div>Ya escuchados</div><div class="t-foot dim num">${st ? `${st.played_count} · ${fileSize(st.played_bytes) || "0 MB"}` : "…"}</div></div>
-        <button class="btn small tinted danger" disabled=${!st?.played_count} onClick=${clearPlayed}>Borrar</button></div>
-      ${admin && st ? html`<div class="cell"><span class="grow">Total en el servidor</span><span class="cell-value num">${fileSize(st.server_bytes) || "0 MB"}</span></div>
-        <div class="cell"><span class="grow">Espacio libre</span><span class="cell-value num">${fileSize(st.disk_free)}</span></div>` : null}
-      ${biggest.length ? html`<button class="cell" onClick=${() => setList(!list)}><span class="grow" style="color:var(--accent)">${list ? "Ocultar episodios" : "Ver episodios por tamaño"}</span><${Icon.chev} class="chev" style=${list ? "transform:rotate(90deg)" : ""}/></button>` : null}
+      <div class="cell"><span class="grow">${t("Tus episodios")}</span><span class="cell-value num">${st ? `${st.count} · ${fileSize(st.bytes) || "0 MB"}` : "…"}</span></div>
+      <div class="cell"><div class="grow"><div>${t("Ya escuchados")}</div><div class="t-foot dim num">${st ? `${st.played_count} · ${fileSize(st.played_bytes) || "0 MB"}` : "…"}</div></div>
+        <button class="btn small tinted danger" disabled=${!st?.played_count} onClick=${clearPlayed}>${t("Borrar")}</button></div>
+      ${admin && st ? html`<div class="cell"><span class="grow">${t("Total en el servidor")}</span><span class="cell-value num">${fileSize(st.server_bytes) || "0 MB"}</span></div>
+        <div class="cell"><span class="grow">${t("Espacio libre")}</span><span class="cell-value num">${fileSize(st.disk_free)}</span></div>` : null}
+      ${biggest.length ? html`<button class="cell" onClick=${() => setList(!list)}><span class="grow" style="color:var(--accent)">${list ? t("Ocultar episodios") : t("Ver episodios por tamaño")}</span><${Icon.chev} class="chev" style=${list ? "transform:rotate(90deg)" : ""}/></button>` : null}
       ${list ? biggest.map((ep) => html`<div class="cell" key=${ep.id}>
-        <div class="grow"><div class="clamp1">${ep.title}</div><div class="t-foot dim clamp1">${ep.channel_title}${ep.played ? " · escuchado" : ""}</div></div>
+        <div class="grow"><div class="clamp1">${ep.title}</div><div class="t-foot dim clamp1">${ep.channel_title}${ep.played ? " · " + t("escuchado") : ""}</div></div>
         <span class="cell-value num t-sub">${fileSize(ep.filesize)}</span>
-        <button class="icon-btn" style="color:var(--danger)" aria-label=${"Eliminar " + ep.title} onClick=${() => removeEpisode(ep)}><${Icon.xcircle} style="width:22px;height:22px"/></button>
+        <button class="icon-btn" style="color:var(--danger)" aria-label=${t("Eliminar {t}", { t: ep.title })} onClick=${() => removeEpisode(ep)}><${Icon.xcircle} style="width:22px;height:22px"/></button>
       </div>`) : null}
     </div>
-    <p class="foot-note">Borrar un episodio quita su audio del servidor${admin ? " salvo que otra cuenta lo tenga en su lista" : ""}. Puedes volver a añadirlo desde la página del canal.</p>
+    <p class="foot-note">${admin ? t("Borrar un episodio quita su audio del servidor salvo que otra cuenta lo tenga en su lista. Puedes volver a añadirlo desde la página del canal.") : t("Borrar un episodio quita su audio del servidor. Puedes volver a añadirlo desde la página del canal.")}</p>
   </section>`;
 }
 
@@ -606,69 +629,74 @@ function CookiesSection() {
     try {
       const r = await api("/api/cookies", { method: "PUT", body: { content: await f.text() } });
       setSt(r);
-      toast(r.retried ? `Cookies guardadas. Reintentando ${r.retried} descarga${r.retried === 1 ? "" : "s"}…` : "Cookies guardadas");
+      toast(r.retried ? tn(r.retried, "Cookies guardadas. Reintentando 1 descarga…", "Cookies guardadas. Reintentando {n} descargas…") : t("Cookies guardadas"));
       setTimeout(() => loadEpisodes().then(pollActivity), 1500);
     } catch (err) { toast(err.message); }
     setBusy(false);
   };
-  const remove = async () => { try { setSt(await api("/api/cookies", { method: "DELETE" })); toast("Cookies eliminadas"); } catch (e) { toast(e.message); } };
+  const remove = async () => { try { setSt(await api("/api/cookies", { method: "DELETE" })); toast(t("Cookies eliminadas")); } catch (e) { toast(e.message); } };
   return html`<section class="section">
-    <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Acceso a YouTube</h2></div>
+    <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">${t("Acceso a YouTube")}</h2></div>
     <div class="group">
       <div class="cell">
-        <div class="grow"><div>Cookies de YouTube</div>
-          <div class="t-foot dim">${!st ? "…" : st.present ? `Configuradas ${st.updated_at ? relDate(st.updated_at) : ""}` : "Sin configurar"}</div></div>
+        <div class="grow"><div>${t("Cookies de YouTube")}</div>
+          <div class="t-foot dim">${!st ? "…" : st.present ? t("Configuradas {d}", { d: st.updated_at ? relDate(st.updated_at) : "" }) : t("Sin configurar")}</div></div>
         <input ref=${file} type="file" accept=".txt,text/plain" style="display:none" onChange=${upload}/>
-        <button class="btn small tinted" disabled=${busy} onClick=${() => file.current.click()}>${busy ? "Subiendo…" : st?.present ? "Reemplazar" : "Subir cookies.txt"}</button>
+        <button class="btn small tinted" disabled=${busy} onClick=${() => file.current.click()}>${busy ? t("Subiendo…") : st?.present ? t("Reemplazar") : t("Subir cookies.txt")}</button>
       </div>
-      ${st?.present && !st.from_env ? html`<button class="cell" onClick=${remove}><span class="grow" style="color:var(--danger)">Eliminar cookies</span></button>` : null}
-      <button class="cell" onClick=${() => setHelp(!help)}><span class="grow">Cómo conseguir el archivo</span><${Icon.chev} class="chev" style=${{ transform: help ? "rotate(90deg)" : "none", transition: "transform 200ms" }}/></button>
+      ${st?.present && !st.from_env ? html`<button class="cell" onClick=${remove}><span class="grow" style="color:var(--danger)">${t("Eliminar cookies")}</span></button>` : null}
+      <button class="cell" onClick=${() => setHelp(!help)}><span class="grow">${t("Cómo conseguir el archivo")}</span><${Icon.chev} class="chev" style=${{ transform: help ? "rotate(90deg)" : "none", transition: "transform 200ms" }}/></button>
       ${help ? html`<div class="cell t-sub" style="display:block;line-height:1.5">
-        <ol style="margin:0;padding-left:20px">
+        ${lang === "en" ? html`<ol style="margin:0;padding-left:20px">
+          <li>On a computer, install the <strong>Get cookies.txt LOCALLY</strong> extension (Chrome) or <strong>cookies.txt</strong> (Firefox) and allow it in incognito.</li>
+          <li>Open an incognito window and sign in to youtube.com with a secondary Google account (better not your main one).</li>
+          <li>In that tab go to youtube.com/robots.txt and export the cookies in Netscape format.</li>
+          <li>Close the incognito window without signing out, and upload the file here. Blocked downloads are retried automatically.</li>
+        </ol>` : html`<ol style="margin:0;padding-left:20px">
           <li>En el ordenador, instala la extensión <strong>Get cookies.txt LOCALLY</strong> (Chrome) o <strong>cookies.txt</strong> (Firefox) y permítela en incógnito.</li>
           <li>Abre una ventana de incógnito y entra en youtube.com con una cuenta de Google secundaria (mejor no la principal).</li>
           <li>En esa pestaña ve a youtube.com/robots.txt y exporta las cookies en formato Netscape.</li>
           <li>Cierra la ventana de incógnito sin cerrar sesión, y sube aquí el archivo. Las descargas bloqueadas se reintentan solas.</li>
-        </ol>
-        <a href="https://github.com/Jfgm299/yt2pod/blob/main/docs/cookies.md" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px">Guía completa</a></div>` : null}
+        </ol>`}
+        <a href="https://github.com/Jfgm299/yt2pod/blob/main/docs/cookies.md" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px">${t("Guía completa")}</a></div>` : null}
     </div>
-    <p class="foot-note">YouTube trata a muchos servidores en la nube como bots. Con las cookies de una cuenta, yt2pod descarga como si fueras tú. Se guardan solo en tu servidor. Si dejan de funcionar al cabo de unas semanas, vuelve a subirlas.</p>
+    <p class="foot-note">${t("YouTube trata a muchos servidores en la nube como bots. Con las cookies de una cuenta, yt2pod descarga como si fueras tú. Se guardan solo en tu servidor. Si dejan de funcionar al cabo de unas semanas, vuelve a subirlas.")}</p>
   </section>`;
 }
 
 function relDateTime(iso) {
   const mins = Math.round((Date.now() - new Date(iso)) / 60000);
-  if (mins < 1) return "ahora mismo";
-  if (mins < 60) return `hace ${mins} min`;
-  return relDate(iso) + " " + new Date(iso).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  if (mins < 1) return t("ahora mismo");
+  if (mins < 60) return t("hace {n} min", { n: mins });
+  return relDate(iso) + " " + new Date(iso).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
 }
 
 function PasswordForm({ done }) {
   const [current, setCurrent] = useState(""), [pw, setPw] = useState(""), [err, setErr] = useState("");
   const submit = async (e) => {
     e.preventDefault();
-    try { await api("/api/me/password", { method: "POST", body: { current, password: pw } }); toast("Contraseña cambiada"); done(); }
+    try { await api("/api/me/password", { method: "POST", body: { current, password: pw } }); toast(t("Contraseña cambiada")); done(); }
     catch (e) { setErr(e.message); }
   };
   return html`<form class="cell" style="flex-direction:column;align-items:stretch;gap:8px" onSubmit=${submit}>
-    <input class="field" type="password" autocomplete="current-password" placeholder="Contraseña actual" value=${current} onInput=${(e) => setCurrent(e.target.value)}/>
-    <input class="field" type="password" autocomplete="new-password" placeholder="Nueva contraseña (mín. 8)" value=${pw} onInput=${(e) => setPw(e.target.value)}/>
+    <input class="field" type="password" autocomplete="current-password" placeholder=${t("Contraseña actual")} value=${current} onInput=${(e) => setCurrent(e.target.value)}/>
+    <input class="field" type="password" autocomplete="new-password" placeholder=${t("Nueva contraseña (mín. 8)")} value=${pw} onInput=${(e) => setPw(e.target.value)}/>
     ${err ? html`<div class="t-foot" style="color:var(--danger)">${err}</div>` : null}
-    <button class="btn" disabled=${!current || pw.length < 8}>Guardar</button></form>`;
+    <button class="btn" disabled=${!current || pw.length < 8}>${t("Guardar")}</button></form>`;
 }
 
 function NewUserForm({ done }) {
   const [u, setU] = useState(""), [pw, setPw] = useState(""), [err, setErr] = useState("");
   const submit = async (e) => {
     e.preventDefault();
-    try { const r = await api("/api/users", { method: "POST", body: { username: u, password: pw } }); toast(`Cuenta ${r.username} creada`); done(r); }
+    try { const r = await api("/api/users", { method: "POST", body: { username: u, password: pw } }); toast(t("Cuenta {u} creada", { u: r.username })); done(r); }
     catch (e) { setErr(e.message); }
   };
   return html`<form class="cell" style="flex-direction:column;align-items:stretch;gap:8px" onSubmit=${submit}>
-    <input class="field" autocapitalize="none" autocomplete="off" placeholder="Usuario" value=${u} onInput=${(e) => setU(e.target.value)}/>
-    <input class="field" type="password" autocomplete="new-password" placeholder="Contraseña (mín. 8)" value=${pw} onInput=${(e) => setPw(e.target.value)}/>
+    <input class="field" autocapitalize="none" autocomplete="off" placeholder=${t("Usuario")} value=${u} onInput=${(e) => setU(e.target.value)}/>
+    <input class="field" type="password" autocomplete="new-password" placeholder=${t("Contraseña (mín. 8)")} value=${pw} onInput=${(e) => setPw(e.target.value)}/>
     ${err ? html`<div class="t-foot" style="color:var(--danger)">${err}</div>` : null}
-    <button class="btn" disabled=${u.trim().length < 2 || pw.length < 8}>Crear cuenta</button></form>`;
+    <button class="btn" disabled=${u.trim().length < 2 || pw.length < 8}>${t("Crear cuenta")}</button></form>`;
 }
 
 // --- auth -------------------------------------------------------------------------------------
@@ -684,13 +712,13 @@ function AuthScreen({ setup }) {
   };
   return html`<div class="auth"><form onSubmit=${submit}>
     <img class="appicon" src="/icons/icon-192.png" alt=""/>
-    <h1 class="t-large" style="margin:0">${setup ? "Bienvenido a yt2pod" : "yt2pod"}</h1>
-    <p class="dim t-sub" style="margin:0 0 12px">${setup ? "Crea tu cuenta. La usarás para entrar desde el móvil y el ordenador, con tu progreso sincronizado." : "Tus canales de YouTube, como podcasts."}</p>
-    <input class="field" autocapitalize="none" autocomplete="username" placeholder="Usuario" aria-label="Usuario" value=${username} onInput=${(e) => setU(e.target.value)}/>
-    <input class="field" type="password" autocomplete=${setup ? "new-password" : "current-password"} placeholder=${setup ? "Contraseña (mín. 8 caracteres)" : "Contraseña"}
-      aria-label="Contraseña" value=${password} onInput=${(e) => setP(e.target.value)}/>
+    <h1 class="t-large" style="margin:0">${setup ? t("Bienvenido a yt2pod") : "yt2pod"}</h1>
+    <p class="dim t-sub" style="margin:0 0 12px">${setup ? t("Crea tu cuenta. La usarás para entrar desde el móvil y el ordenador, con tu progreso sincronizado.") : t("Tus canales de YouTube, como podcasts.")}</p>
+    <input class="field" autocapitalize="none" autocomplete="username" placeholder=${t("Usuario")} aria-label=${t("Usuario")} value=${username} onInput=${(e) => setU(e.target.value)}/>
+    <input class="field" type="password" autocomplete=${setup ? "new-password" : "current-password"} placeholder=${setup ? t("Contraseña (mín. 8 caracteres)") : t("Contraseña")}
+      aria-label=${t("Contraseña")} value=${password} onInput=${(e) => setP(e.target.value)}/>
     <div class="err" role="alert">${err}</div>
-    <button class="btn block" disabled=${busy || username.trim().length < 2 || (setup ? password.length < 8 : !password)}>${busy ? html`<span class="spinner" style="border-top-color:currentColor"></span>` : setup ? "Crear cuenta" : "Entrar"}</button>
+    <button class="btn block" disabled=${busy || username.trim().length < 2 || (setup ? password.length < 8 : !password)}>${busy ? html`<span class="spinner" style="border-top-color:currentColor"></span>` : setup ? t("Crear cuenta") : t("Entrar")}</button>
   </form></div>`;
 }
 
@@ -760,7 +788,7 @@ function PlayerSheet() {
   if (!mounted) return null;
   return html`<div>
     <div class="scrim" ref=${sheet.scrim} onClick=${() => sheet.close()}></div>
-    <div class="sheet" ref=${sheet.panel} role="dialog" aria-modal="true" aria-label="Reproductor" style="transform:translate3d(0,100%,0)">
+    <div class="sheet" ref=${sheet.panel} role="dialog" aria-modal="true" aria-label=${t("Reproductor")} style="transform:translate3d(0,100%,0)">
       <div class="grabber" onPointerDown=${sheet.onPointerDown}><i></i></div>
       <div class="sheet-scroll"><${FullPlayer} onDragStart=${sheet.onPointerDown} close=${() => sheet.close()}/></div>
     </div>
@@ -784,25 +812,25 @@ function FullPlayer({ onDragStart, close }) {
         <div class="title clamp2">${ep.title}</div>
         <a class="chan" href=${"/canal/" + ep.channel_id} onClick=${(e) => { e.preventDefault(); close(); navigate("/canal/" + ep.channel_id); }}>${ep.channel_title}</a>
       </div>
-      <button class="more-btn" aria-label="Más opciones" onClick=${() => openEpisodeActions(ep)}><${Icon.more}/></button>
+      <button class="more-btn" aria-label=${t("Más opciones")} onClick=${() => openEpisodeActions(ep)}><${Icon.more}/></button>
     </div>
     <div>
       <${Scrubber} position=${p.position} duration=${dur}/>
       <div class="times"><span>${clock(p.position)}</span><span>-${clock(Math.max(0, dur - p.position))}</span></div>
     </div>
     <div class="controls">
-      <button class="skip" aria-label="Retroceder 15 segundos" onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
-      <button class="big" aria-label=${p.playing ? "Pausar" : "Reproducir"} onClick=${() => player.toggle()}>
+      <button class="skip" aria-label=${t("Retroceder 15 segundos")} onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
+      <button class="big" aria-label=${p.playing ? t("Pausar") : t("Reproducir")} onClick=${() => player.toggle()}>
         ${p.loading && p.playing ? html`<span class="spinner" style="width:36px;height:36px;border-width:3px"></span>` : p.playing ? html`<${Icon.pause}/>` : html`<${Icon.play} style="margin-left:5px"/>`}
       </button>
-      <button class="skip" aria-label="Avanzar 30 segundos" onClick=${() => player.skip(30)}><${Icon.fwd30}/></button>
+      <button class="skip" aria-label=${t("Avanzar 30 segundos")} onClick=${() => player.skip(30)}><${Icon.fwd30}/></button>
     </div>
     <div class="bottom">
-      <button class="rate-btn" aria-label=${"Velocidad " + p.rate + "x"} onClick=${() => { haptic(4); player.setRate(nextRate); }}>${String(p.rate).replace(".", ",")}×</button>
+      <button class="rate-btn" aria-label=${t("Velocidad {r}x", { r: p.rate })} onClick=${() => { haptic(4); player.setRate(nextRate); }}>${rate(p.rate)}</button>
       <${SleepButton} sleepAt=${p.sleepAt}/>
-      <button class="link-btn small" onClick=${() => setPlayed(ep, true)}>Marcar como escuchado</button>
+      <button class="link-btn small" onClick=${() => setPlayed(ep, true)}>${t("Marcar como escuchado")}</button>
     </div>
-    ${ep.description ? html`<div class="desc">${desc ? ep.description : ep.description.slice(0, 280)}${!desc && ep.description.length > 280 ? html`… <button class="link-btn small" onClick=${() => setDesc(true)}>Más</button>` : null}</div>` : null}
+    ${ep.description ? html`<div class="desc">${desc ? ep.description : ep.description.slice(0, 280)}${!desc && ep.description.length > 280 ? html`… <button class="link-btn small" onClick=${() => setDesc(true)}>${t("Más")}</button>` : null}</div>` : null}
   </div>`;
 }
 
@@ -817,13 +845,14 @@ function SleepButton({ sleepAt }) {
   }, [sleepAt]);
   const left = sleepAt ? Math.max(0, (sleepAt - Date.now()) / 1000) : 0;
   const choose = () => openActions({
-    title: sleepAt ? `Se pausará en ${clock(left)}` : "Pausar la reproducción dentro de…",
+    title: sleepAt ? t("Se pausará en {t}", { t: clock(left) }) : t("Pausar la reproducción dentro de…"),
     actions: [
-      ...SLEEP.map((m) => ({ label: m < 60 ? `${m} minutos` : m === 60 ? "1 hora" : `${m / 60} horas`.replace(".", ","), run: () => { player.setSleep(m); toast(`Se pausará en ${m} min`); } })),
-      ...(sleepAt ? [{ label: "Desactivar temporizador", destructive: true, run: () => player.setSleep(null) }] : []),
+      ...SLEEP.map((m) => ({ label: m < 60 ? t("{n} minutos", { n: m }) : m === 60 ? t("1 hora") : t("{n} horas", { n: new Intl.NumberFormat(lang).format(m / 60) }),
+        run: () => { player.setSleep(m); toast(t("Se pausará en {n} min", { n: m })); } })),
+      ...(sleepAt ? [{ label: t("Desactivar temporizador"), destructive: true, run: () => player.setSleep(null) }] : []),
     ],
   });
-  return html`<button class=${"rate-btn sleep-btn" + (sleepAt ? " on" : "")} aria-label=${sleepAt ? `Temporizador: quedan ${clock(left)}` : "Temporizador"} onClick=${choose}>
+  return html`<button class=${"rate-btn sleep-btn" + (sleepAt ? " on" : "")} aria-label=${sleepAt ? t("Temporizador: quedan {t}", { t: clock(left) }) : t("Temporizador")} onClick=${choose}>
     <${Icon.moon}/>${sleepAt ? html`<span>${clock(left)}</span>` : null}
   </button>`;
 }
@@ -849,7 +878,7 @@ function Scrubber({ position, duration }) {
     if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); player.skip(30); }
   };
   return html`<div class=${"scrubber" + (drag != null ? " active" : "")} ref=${ref} role="slider" tabindex="0"
-      aria-label="Posición" aria-valuemin="0" aria-valuemax=${Math.round(duration)} aria-valuenow=${Math.round(frac * duration)} aria-valuetext=${clock(frac * duration)}
+      aria-label=${t("Posición")} aria-valuemin="0" aria-valuemax=${Math.round(duration)} aria-valuenow=${Math.round(frac * duration)} aria-valuetext=${clock(frac * duration)}
       onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${() => setDrag(null)} onKeyDown=${key}>
     <div class="track"><i style=${{ width: frac * 100 + "%" }}></i></div>
     ${drag != null ? html`<span class="sr" aria-live="polite">${clock(drag * duration)}</span>` : null}
@@ -862,7 +891,7 @@ function MiniPlayer() {
   if (!p.id || !ep) return null;
   const dur = p.duration || ep.duration || 0;
   const openSheet = () => setState({ sheet: "player" });
-  return html`<div class="mini" role="region" aria-label="Reproduciendo">
+  return html`<div class="mini" role="region" aria-label=${t("Reproduciendo")}>
     <div class="art" onClick=${openSheet}><${Thumb} ep=${ep} showDuration=${false} progress=${false}/></div>
     <div class="txt" onClick=${openSheet}>
       <div class="t-sub clamp1" style="font-weight:600">${ep.title}</div>
@@ -872,11 +901,11 @@ function MiniPlayer() {
       <span class="t-cap dim num">${clock(p.position)}</span>
       <${Scrubber} position=${p.position} duration=${dur}/>
       <span class="t-cap dim num">-${clock(Math.max(0, dur - p.position))}</span>
-      <button class="rate-btn" style="height:28px;min-width:46px;font-size:.8125rem" onClick=${() => player.setRate(RATES[(RATES.indexOf(p.rate) + 1) % RATES.length] || 1)}>${String(p.rate).replace(".", ",")}×</button>
+      <button class="rate-btn" style="height:28px;min-width:46px;font-size:.8125rem" onClick=${() => player.setRate(RATES[(RATES.indexOf(p.rate) + 1) % RATES.length] || 1)}>${rate(p.rate)}</button>
     </div>
-    <button class="icon-btn ctl desk-only" aria-label="Retroceder 15 segundos" onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
-    <button class="icon-btn ctl" aria-label=${p.playing ? "Pausar" : "Reproducir"} onClick=${() => player.toggle()}>${p.playing ? html`<${Icon.pause}/>` : html`<${Icon.play}/>`}</button>
-    <button class="icon-btn ctl" aria-label="Avanzar 30 segundos" onClick=${() => player.skip(30)}><${Icon.fwd30}/></button>
+    <button class="icon-btn ctl desk-only" aria-label=${t("Retroceder 15 segundos")} onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
+    <button class="icon-btn ctl" aria-label=${p.playing ? t("Pausar") : t("Reproducir")} onClick=${() => player.toggle()}>${p.playing ? html`<${Icon.pause}/>` : html`<${Icon.play}/>`}</button>
+    <button class="icon-btn ctl" aria-label=${t("Avanzar 30 segundos")} onClick=${() => player.skip(30)}><${Icon.fwd30}/></button>
     <div class="prog"><i style=${{ width: (dur ? (100 * p.position) / dur : 0) + "%" }}></i></div>
   </div>`;
 }
@@ -887,10 +916,10 @@ function openEpisodeActions(ep) {
   openActions({
     title: ep.title,
     actions: [
-      ep.played ? { label: "Marcar como no escuchado", run: () => setPlayed(ep, false) } : { label: "Marcar como escuchado", run: () => setPlayed(ep, true) },
-      { label: "Ir al canal", run: () => { setState({ sheet: null }); navigate("/canal/" + ep.channel_id); } },
-      { label: "Ver en YouTube", run: () => open(`https://www.youtube.com/watch?v=${ep.id}`, "_blank", "noopener") },
-      { label: ep.filesize ? `Eliminar descarga (${fileSize(ep.filesize)})` : "Eliminar descarga", destructive: true, run: () => removeEpisode(ep) },
+      ep.played ? { label: t("Marcar como no escuchado"), run: () => setPlayed(ep, false) } : { label: t("Marcar como escuchado"), run: () => setPlayed(ep, true) },
+      { label: t("Ir al canal"), run: () => { setState({ sheet: null }); navigate("/canal/" + ep.channel_id); } },
+      { label: t("Ver en YouTube"), run: () => open(`https://www.youtube.com/watch?v=${ep.id}`, "_blank", "noopener") },
+      { label: ep.filesize ? t("Eliminar descarga ({s})", { s: fileSize(ep.filesize) }) : t("Eliminar descarga"), destructive: true, run: () => removeEpisode(ep) },
     ],
   });
 }
@@ -909,7 +938,7 @@ function ActionSheet() {
         ${shown.title ? html`<div class="head clamp2">${shown.title}</div>` : null}
         ${shown.actions.map((a) => html`<button class=${"act" + (a.destructive ? " destructive" : "")} onClick=${() => choose(a)}>${a.label}</button>`)}
       </div>
-      <button class="act cancel" onClick=${() => sheet.close()}>Cancelar</button>
+      <button class="act cancel" onClick=${() => sheet.close()}>${t("Cancelar")}</button>
     </div>
   </div>`;
 }
@@ -925,15 +954,15 @@ function Toast() {
 
 // --- shell --------------------------------------------------------------------------------------
 const TABS = [
-  { path: "/", label: "Escuchar", icon: Icon.listen },
-  { path: "/canales", label: "Canales", icon: Icon.channels },
-  { path: "/buscar", label: "Buscar", icon: Icon.search },
-  { path: "/ajustes", label: "Ajustes", icon: Icon.gear },
+  { path: "/", label: t("Escuchar"), icon: Icon.listen },
+  { path: "/canales", label: t("Canales"), icon: Icon.channels },
+  { path: "/buscar", label: t("Buscar"), icon: Icon.search },
+  { path: "/ajustes", label: t("Ajustes"), icon: Icon.gear },
 ];
 
 function TabBar({ path }) {
   const active = path.startsWith("/canal/") ? "/canales" : path;
-  return html`<nav class="tabbar" aria-label="Secciones">
+  return html`<nav class="tabbar" aria-label=${t("Secciones")}>
     <div class="brand"><img src="/icons/icon-192.png" alt=""/>yt2pod</div>
     ${TABS.map((t) => html`<a class=${"tab" + (active === t.path ? " on" : "")} href=${t.path} aria-current=${active === t.path ? "page" : undefined}
       onClick=${(e) => { e.preventDefault(); if (active === t.path) scrollTo({ top: 0, behavior: "smooth" }); else navigate(t.path); }}>

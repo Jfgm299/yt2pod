@@ -32,8 +32,9 @@
   color-scheme: light;
 }
 
+/* Dark: follows the system unless the user picked a theme in Ajustes (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #000000;
     --bg-elevated: #1c1c1e;
     --fill: rgba(120, 120, 128, 0.24);
@@ -57,6 +58,30 @@
     --scrim: rgba(0, 0, 0, 0.55);
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --bg-elevated: #1c1c1e;
+  --fill: rgba(120, 120, 128, 0.24);
+  --fill-strong: rgba(120, 120, 128, 0.36);
+  --label: #ffffff;
+  --label-2: rgba(235, 235, 245, 0.62);
+  --label-3: rgba(235, 235, 245, 0.32);
+  --separator: rgba(84, 84, 88, 0.6);
+  --accent: #a78bfa;
+  --accent-soft: rgba(167, 139, 250, 0.16);
+  --on-accent: #1a0b3d;
+  --danger: #ff453a;
+  --success: #30d158;
+  --warning: #ff9f0a;
+  --chrome: rgba(22, 22, 24, 0.72);
+  --chrome-heavy: rgba(28, 28, 30, 0.86);
+  --chrome-edge: rgba(255, 255, 255, 0.08);
+  --shadow-1: none;
+  --shadow-2: 0 10px 40px rgba(0, 0, 0, 0.6);
+  --shadow-art: 0 18px 50px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -186,6 +211,8 @@ a { color: var(--accent); text-decoration: none; }
 button.cell:active, .cell.tappable:active { background: var(--fill); transition: none; }
 .cell .grow { flex: 1; min-width: 0; }
 .cell-value { color: var(--label-2); }
+.cell.pref { flex-direction: column; align-items: stretch; gap: 8px; }
+.cell.pref .pref-label { color: var(--label-2); font-size: 0.8125rem; }
 .foot-note { margin: 8px 16px 0; color: var(--label-2); font-size: 0.8125rem; line-height: 1.4; }
 .chev { width: 8px; height: 14px; color: var(--label-3); flex: none; }
 
@@ -253,7 +280,8 @@ button.cell:active, .cell.tappable:active { background: var(--fill); transition:
   box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 3px 1px rgba(0,0,0,.04);
   transition: transform 320ms cubic-bezier(.2,.9,.25,1), width 320ms cubic-bezier(.2,.9,.25,1);
 }
-@media (prefers-color-scheme: dark) { .segmented .thumb { background: #636366; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .segmented .thumb { background: #636366; } }
+:root[data-theme="dark"] .segmented .thumb { background: #636366; }
 .segmented button.on { font-weight: 600; }
 
 /* --- chips --- */

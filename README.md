@@ -20,6 +20,7 @@ automatic downloads of new uploads and listening progress synced across devices.
   (espacio, ←, →). La posición se guarda cada pocos segundos y al salir.
 - **Almacenamiento**: cada episodio muestra lo que ocupa; en *Ajustes* ves el total y el espacio libre,
   y puedes borrar de golpe los ya escuchados o los que más ocupan.
+- **Español e inglés, modo claro y oscuro**: en *Ajustes → Apariencia*; por defecto sigue el idioma del navegador y el tema del sistema.
 - **Cuentas**: entra con el mismo usuario desde el móvil y el ordenador. Puedes crear cuentas para
   otras personas; cada una tiene sus canales y su progreso, y el audio se descarga una sola vez.
 - **Feed RSS privado** por cuenta, por si prefieres Overcast, Pocket Casts o Apple Podcasts.

@@ -435,7 +435,7 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
     # Every load asks for the app code under a URL that changes with its content, so no browser or
     # service worker can keep running an old copy after a deploy.
     stamp = hashlib.sha256(b"".join(f.read_bytes() for f in sorted(WEB.rglob("*")) if f.is_file())).hexdigest()[:10]
-    stamped = re.compile(r'"(/(?:app|lib|store)\.js|/styles\.css|/vendor/htm-preact\.js)"')
+    stamped = re.compile(r'"(/(?:app|lib|store|i18n)\.js|/styles\.css|/vendor/htm-preact\.js)"')
 
     def stamp_urls(file: Path) -> Response:
         body = stamped.sub(lambda m: f'"{m.group(1)}?v={stamp}"', file.read_text(encoding="utf-8"))
