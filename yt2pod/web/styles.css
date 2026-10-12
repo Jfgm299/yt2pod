@@ -22,6 +22,12 @@
   --shadow-2: 0 8px 30px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
   --shadow-art: 0 18px 40px rgba(0, 0, 0, 0.22);
   --scrim: rgba(0, 0, 0, 0.32);
+  /* Liquid Glass (phone tab bar and mini player) */
+  --glass: rgba(255, 255, 255, 0.5);
+  --glass-lens: rgba(120, 120, 128, 0.14);
+  --glass-rim: rgba(255, 255, 255, 0.75);
+  --glass-rim-low: rgba(255, 255, 255, 0.28);
+  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
   --radius: 14px;
   --radius-s: 10px;
   --tabbar-h: 50px;
@@ -56,6 +62,11 @@
     --shadow-2: 0 10px 40px rgba(0, 0, 0, 0.6);
     --shadow-art: 0 18px 50px rgba(0, 0, 0, 0.6);
     --scrim: rgba(0, 0, 0, 0.55);
+    --glass: rgba(42, 42, 46, 0.48);
+    --glass-lens: rgba(255, 255, 255, 0.12);
+    --glass-rim: rgba(255, 255, 255, 0.22);
+    --glass-rim-low: rgba(255, 255, 255, 0.06);
+    --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
     color-scheme: dark;
   }
 }
@@ -81,6 +92,11 @@
   --shadow-2: 0 10px 40px rgba(0, 0, 0, 0.6);
   --shadow-art: 0 18px 50px rgba(0, 0, 0, 0.6);
   --scrim: rgba(0, 0, 0, 0.55);
+  --glass: rgba(42, 42, 46, 0.48);
+  --glass-lens: rgba(255, 255, 255, 0.12);
+  --glass-rim: rgba(255, 255, 255, 0.22);
+  --glass-rim-low: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
   color-scheme: dark;
 }
 
@@ -561,12 +577,67 @@ img.fade.loaded { opacity: 1; }
 
 /* --- accessibility preferences --- */
 @media (prefers-reduced-motion: reduce) {
+  .tab-lens { transition: none; }
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 120ms !important; }
   .round .ring.spin, .spinner { animation: none !important; }
   .player .art.paused { transform: none; }
 }
+/* --- Liquid Glass dock (phone): the tab bar and the mini player float as glass capsules --- */
+@media (max-width: 899px) {
+  :root { --tabbar-h: 62px; --mini-h: 56px; --dock-b: max(12px, calc(var(--safe-b) - 10px)); }
+  .main { padding-bottom: calc(var(--tabbar-h) + var(--dock-b) + 28px); }
+  .main.has-player { padding-bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--dock-b) + 40px); }
+  /* Content fades out under the dock, like iOS's scroll edge effect. */
+  .shell::after {
+    content: ""; position: fixed; left: 0; right: 0; bottom: 0; z-index: 39; pointer-events: none;
+    height: calc(var(--tabbar-h) + var(--dock-b) + 30px);
+    background: linear-gradient(to top, color-mix(in srgb, var(--bg) 78%, transparent), transparent);
+  }
+  .glass, .tabbar, .mini {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(16px) saturate(190%) brightness(1.04);
+    backdrop-filter: blur(16px) saturate(190%) brightness(1.04);
+    box-shadow: var(--glass-shadow), inset 0 1px 0.5px var(--glass-rim), inset 0 -1px 0.5px var(--glass-rim-low),
+      inset 0 0 0 0.5px var(--glass-rim-low);
+  }
+  /* Specular sheen: light catching the top-left curve of the glass. */
+  .tabbar::before, .mini::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(120% 90% at 18% -20%, var(--glass-rim-low), transparent 55%),
+      radial-gradient(80% 70% at 100% 130%, var(--glass-rim-low), transparent 60%);
+  }
+  .tabbar {
+    left: 16px; right: 16px; bottom: var(--dock-b); height: var(--tabbar-h);
+    padding: 5px; border-radius: 999px; justify-content: stretch;
+  }
+  .tab { position: relative; z-index: 1; height: 100%; border-radius: 999px; color: var(--label); font-size: 0.625rem; font-weight: 600; }
+  .tab svg { width: 24px; height: 24px; }
+  .tab.on { color: var(--accent); }
+  .tab:active { transform: scale(0.9); }
+  /* The lens: a drop of glass that slides to the selected tab with a little overshoot. */
+  .tab-lens {
+    position: absolute; z-index: 0; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 4);
+    border-radius: 999px; background: var(--glass-lens);
+    box-shadow: inset 0 1px 0.5px var(--glass-rim-low), inset 0 0 0 0.5px var(--glass-rim-low);
+    transition: transform 460ms cubic-bezier(.3, 1.35, .5, 1);
+  }
+  .tabbar:active .tab-lens { transition-duration: 300ms; }
+  .mini {
+    left: 16px; right: 16px; bottom: calc(var(--tabbar-h) + var(--dock-b) + 8px);
+    border-radius: 999px; overflow: visible; padding: 0 8px 0 6px; gap: 10px;
+  }
+  .mini .art { width: 44px; height: 44px; }
+  .mini .art .thumb16 { width: 44px; height: 44px; aspect-ratio: auto; border-radius: 50%; }
+  .mini .prog { left: 22px; right: 22px; bottom: 3px; height: 2px; border-radius: 1px; overflow: hidden; background: transparent; }
+  .mini .ctl { position: relative; z-index: 1; }
+  .main.has-player ~ .selbar { bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--dock-b) + 18px); }
+  .selbar { bottom: calc(var(--tabbar-h) + var(--dock-b) + 14px); }
+}
+@media (min-width: 900px) { .tab-lens { display: none; } }
+
 @media (prefers-reduced-transparency: reduce) {
   .navbar.scrolled, .tabbar, .mini, .selbar, .toast, .actions-sheet .group, .card .play-chip { background: var(--bg-elevated); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .tabbar::before, .mini::before, .shell::after { display: none; }
 }
 @media (prefers-contrast: more) {
   :root { --separator: rgba(60, 60, 67, 0.5); --label-2: rgba(60, 60, 67, 0.85); }

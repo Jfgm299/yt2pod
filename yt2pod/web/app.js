@@ -964,6 +964,7 @@ function TabBar({ path }) {
   const active = path.startsWith("/canal/") ? "/canales" : path;
   return html`<nav class="tabbar" aria-label=${t("Secciones")}>
     <div class="brand"><img src="/icons/icon-192.png" alt=""/>yt2pod</div>
+    <span class="tab-lens" aria-hidden="true" style=${{ transform: `translateX(${Math.max(0, TABS.findIndex((x) => x.path === active)) * 100}%)` }}></span>
     ${TABS.map((t) => html`<a class=${"tab" + (active === t.path ? " on" : "")} href=${t.path} aria-current=${active === t.path ? "page" : undefined}
       onClick=${(e) => { e.preventDefault(); if (active === t.path) scrollTo({ top: 0, behavior: "smooth" }); else navigate(t.path); }}>
       <${t.icon}/><span>${t.label}</span></a>`)}
