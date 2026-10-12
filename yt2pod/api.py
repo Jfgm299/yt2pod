@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -412,6 +414,16 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
     def healthz():
         return {"ok": True, "version": __version__}
 
+    # Every load asks for the app code under a URL that changes with its content, so no browser or
+    # service worker can keep running an old copy after a deploy.
+    stamp = hashlib.sha256(b"".join(f.read_bytes() for f in sorted(WEB.rglob("*")) if f.is_file())).hexdigest()[:10]
+    stamped = re.compile(r'"(/(?:app|lib|store)\.js|/styles\.css|/vendor/htm-preact\.js)"')
+
+    def stamp_urls(file: Path) -> Response:
+        body = stamped.sub(lambda m: f'"{m.group(1)}?v={stamp}"', file.read_text(encoding="utf-8"))
+        media = "text/html" if file.suffix == ".html" else "text/javascript"
+        return Response(body, media_type=f"{media}; charset=utf-8", headers={"Cache-Control": "no-cache"})
+
     @app.get("/{path:path}")
     def static(path: str):
         if path.startswith(("api/", "rss/")):
@@ -424,8 +436,10 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
             headers = {"Cache-Control": "public, max-age=86400" if immutable else "no-cache"}
             if file.name == "sw.js":
                 headers["Service-Worker-Allowed"] = "/"
+            if path in ("app.js", "lib.js", "store.js", "index.html"):
+                return stamp_urls(file)
             return FileResponse(file, headers=headers)
-        return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+        return stamp_urls(WEB / "index.html")
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException):

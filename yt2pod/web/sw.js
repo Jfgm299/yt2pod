@@ -1,5 +1,5 @@
 // yt2pod service worker: the app shell works offline; API, RSS and audio always go to the network.
-const VERSION = "yt2pod-v0.2.1";
+const VERSION = "yt2pod-v0.2.2";
 const SHELL = ["/", "/styles.css", "/app.js", "/lib.js", "/store.js", "/vendor/htm-preact.js",
   "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon.svg"];
 const IMAGES = "yt2pod-images";
@@ -36,7 +36,7 @@ self.addEventListener("fetch", (e) => {
   const isPage = e.request.mode === "navigate";
   const key = isPage ? "/" : url.pathname;
   e.respondWith(caches.open(VERSION).then(async (c) => {
-    const net = fetch(isPage ? "/" : e.request).then((res) => { if (res.ok) c.put(key, res.clone()); return res; });
+    const net = fetch(isPage ? "/" : e.request, { cache: "no-cache" }).then((res) => { if (res.ok) c.put(key, res.clone()); return res; });
     const slow = new Promise((r) => setTimeout(r, 2500));
     const first = await Promise.race([net.catch(() => null), slow]);
     if (first) return first;
