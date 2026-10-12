@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 log = logging.getLogger(__name__)
+
+
+AUDIO_EXTS = {"m4a", "mp3", "opus", "ogg", "webm", "aac", "flac"}
 
 
 class YouTubeError(RuntimeError):
@@ -88,31 +91,67 @@ class YouTube:
                 "upload_date", "thumbnail", "webpage_url", "live_status", "channel", "uploader")
         return {k: info.get(k) for k in keep}
 
-    def download_audio(self, video_id: str, out_dir: Path, audio_format: str = "m4a",
-                       sponsorblock_remove: list[str] | None = None) -> Path:
+    def download_audio(self, video_id: str, out_dir: Path, audio_format: str = "best",
+                       sponsorblock_remove: list[str] | None = None,
+                       progress: Callable[[dict], None] | None = None) -> Path:
+        """Download a video's audio track.
+
+        audio_format:
+          best  keep YouTube's best stream untouched (usually Opus ~160 kbps, otherwise AAC);
+                no re-encoding, so no quality loss. Output .opus or .m4a.
+          m4a   YouTube's AAC stream (128 kbps), copied without re-encoding. Plays everywhere (iOS).
+          opus  Opus stream, copied without re-encoding.
+          mp3   re-encoded to VBR V0 (~245 kbps). Maximum compatibility, but a lossy re-encode.
+        progress: optional callback receiving dicts like
+          {"status": "downloading", "percent": 42.0} / {"status": "processing"} /
+          {"status": "finished", "acodec": "opus", "abr": 135.2, "format_id": "251"}.
+        """
         import yt_dlp
 
         out_dir.mkdir(parents=True, exist_ok=True)
+        fmt = {
+            "best": "bestaudio/best",
+            "m4a": "bestaudio[ext=m4a]/bestaudio/best",
+            "opus": "bestaudio[acodec=opus]/bestaudio/best",
+            "mp3": "bestaudio/best",
+        }.get(audio_format, "bestaudio/best")
         postprocessors: list[dict[str, Any]] = []
-        if audio_format == "m4a":
-            fmt = "bestaudio[ext=m4a]/bestaudio/best"
-        else:
-            fmt = "bestaudio/best"
         if sponsorblock_remove:
             postprocessors += [
                 {"key": "SponsorBlock", "categories": sponsorblock_remove},
                 {"key": "ModifyChapters", "remove_sponsor_segments": sponsorblock_remove},
             ]
-        # Always pass through FFmpegExtractAudio so the final container matches audio_format.
+        # FFmpegExtractAudio copies the stream when the codec already matches, so only
+        # mp3 (or a codec mismatch) actually re-encodes.
         postprocessors.append({
             "key": "FFmpegExtractAudio",
-            "preferredcodec": audio_format,
-            "preferredquality": "128" if audio_format == "mp3" else "0",
+            "preferredcodec": "best" if audio_format == "best" else audio_format,
+            "preferredquality": "0",  # best VBR quality when a re-encode is unavoidable
         })
+        postprocessors.append({"key": "FFmpegMetadata", "add_metadata": True})
+
+        chosen: dict[str, Any] = {}
+
+        def on_progress(d: dict) -> None:
+            info = d.get("info_dict") or {}
+            if info.get("format_id"):
+                chosen.update(acodec=info.get("acodec"), abr=info.get("abr"), format_id=info.get("format_id"),
+                              asr=info.get("asr"), title=info.get("title"))
+            if progress is None:
+                return
+            if d.get("status") == "downloading":
+                total = d.get("total_bytes") or d.get("total_bytes_estimate")
+                pct = (100.0 * d.get("downloaded_bytes", 0) / total) if total else None
+                progress({"status": "downloading", "percent": pct, "speed": d.get("speed")})
+            elif d.get("status") == "finished":
+                progress({"status": "processing"})
+
         opts = _base_opts(self.cookies_file) | {
             "format": fmt,
             "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
             "postprocessors": postprocessors,
+            "progress_hooks": [on_progress],
+            "overwrites": True,
         }
         url = f"https://www.youtube.com/watch?v={video_id}"
         try:
@@ -120,13 +159,47 @@ class YouTube:
                 ydl.download([url])
         except Exception as e:
             raise YouTubeError(f"Download failed for {url}: {e}") from e
-        path = out_dir / f"{video_id}.{audio_format}"
-        if not path.exists():
-            candidates = sorted(out_dir.glob(f"{video_id}.*"))
-            if not candidates:
-                raise YouTubeError(f"Download finished but no file found for {video_id}")
-            path = candidates[0]
+        candidates = [p for p in sorted(out_dir.glob(f"{video_id}.*")) if p.suffix.lstrip(".") in AUDIO_EXTS]
+        preferred = out_dir / f"{video_id}.{audio_format}"
+        if preferred.exists():
+            path = preferred
+        elif candidates:
+            path = max(candidates, key=lambda p: p.stat().st_mtime)
+        else:
+            raise YouTubeError(f"Download finished but no audio file found for {video_id}")
+        if progress:
+            progress({"status": "finished", "file": path.name, "size": path.stat().st_size,
+                      "source": chosen, "result": probe_audio(path)})
         return path
+
+
+def probe_audio(path: Path) -> dict:
+    """Codec, bitrate and sample rate of the file actually written (via ffprobe), best effort."""
+    import json
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffprobe"):
+        return {}
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+             "stream=codec_name,sample_rate,channels,bit_rate:format=bit_rate,duration",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        data = json.loads(out.stdout)
+    except Exception:
+        return {}
+    stream = (data.get("streams") or [{}])[0]
+    fmt = data.get("format") or {}
+    bitrate = stream.get("bit_rate") or fmt.get("bit_rate")
+    return {
+        "codec": stream.get("codec_name"),
+        "kbps": round(int(bitrate) / 1000) if bitrate and str(bitrate).isdigit() else None,
+        "sample_rate": int(stream["sample_rate"]) if stream.get("sample_rate") else None,
+        "channels": stream.get("channels"),
+    }
 
 
 def _best_thumbnail(info: dict) -> str | None:

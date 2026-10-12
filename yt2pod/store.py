@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,18 +63,27 @@ def _now() -> str:
 class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(path), check_same_thread=False)
+        # Shared between the web UI's request threads and its download worker.
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+
+    def _q(self, sql: str, args: tuple | list = (), fetch: str | None = None):
+        with self.lock:
+            cur = self.db.execute(sql, args)
+            if fetch == "one":
+                return cur.fetchone()
+            if fetch == "all":
+                return cur.fetchall()
+            return None
 
     def close(self) -> None:
         self.db.close()
 
     # --- episodes -------------------------------------------------------
     def get(self, feed_id: str, video_id: str) -> Episode | None:
-        row = self.db.execute(
-            "SELECT * FROM episodes WHERE feed_id=? AND video_id=?", (feed_id, video_id)
-        ).fetchone()
+        row = self._q("SELECT * FROM episodes WHERE feed_id=? AND video_id=?", (feed_id, video_id), fetch="one")
         return Episode(**dict(row)) if row else None
 
     def upsert(self, ep: Episode) -> None:
@@ -81,8 +91,7 @@ class Store:
         data = ep.__dict__
         cols = ", ".join(data)
         marks = ", ".join("?" for _ in data)
-        self.db.execute(f"INSERT OR REPLACE INTO episodes ({cols}) VALUES ({marks})", tuple(data.values()))
-        self.db.commit()
+        self._q(f"INSERT OR REPLACE INTO episodes ({cols}) VALUES ({marks})", tuple(data.values()))
 
     def episodes(self, feed_id: str, status: str | None = "downloaded") -> list[Episode]:
         q = "SELECT * FROM episodes WHERE feed_id=?"
@@ -91,42 +100,39 @@ class Store:
             q += " AND status=?"
             args.append(status)
         q += " ORDER BY COALESCE(published, updated_at) DESC"
-        return [Episode(**dict(r)) for r in self.db.execute(q, args).fetchall()]
+        return [Episode(**dict(r)) for r in self._q(q, args, fetch="all")]
 
     # --- metadata cache -------------------------------------------------
     def cached_info(self, video_id: str) -> dict | None:
-        row = self.db.execute("SELECT info FROM video_cache WHERE video_id=?", (video_id,)).fetchone()
+        row = self._q("SELECT info FROM video_cache WHERE video_id=?", (video_id,), fetch="one")
         return json.loads(row["info"]) if row else None
 
     def cache_info(self, video_id: str, info: dict) -> None:
-        self.db.execute(
+        self._q(
             "INSERT OR REPLACE INTO video_cache (video_id, info) VALUES (?, ?)",
             (video_id, json.dumps(info)),
         )
-        self.db.commit()
 
     # --- feed state -----------------------------------------------------
     def is_initialized(self, feed_id: str) -> bool:
-        row = self.db.execute("SELECT initialized FROM feed_state WHERE feed_id=?", (feed_id,)).fetchone()
+        row = self._q("SELECT initialized FROM feed_state WHERE feed_id=?", (feed_id,), fetch="one")
         return bool(row and row["initialized"])
 
     def mark_synced(self, feed_id: str, channel_info: dict | None = None) -> None:
-        self.db.execute(
+        self._q(
             """INSERT INTO feed_state (feed_id, initialized, channel_info, last_sync) VALUES (?, 1, ?, ?)
                ON CONFLICT(feed_id) DO UPDATE SET initialized=1, last_sync=excluded.last_sync,
                channel_info=COALESCE(excluded.channel_info, feed_state.channel_info)""",
             (feed_id, json.dumps(channel_info) if channel_info else None, _now()),
         )
-        self.db.commit()
 
     def save_channel_info(self, feed_id: str, channel_info: dict) -> None:
-        self.db.execute(
+        self._q(
             """INSERT INTO feed_state (feed_id, initialized, channel_info) VALUES (?, 0, ?)
                ON CONFLICT(feed_id) DO UPDATE SET channel_info=excluded.channel_info""",
             (feed_id, json.dumps(channel_info)),
         )
-        self.db.commit()
 
     def channel_info(self, feed_id: str) -> dict:
-        row = self.db.execute("SELECT channel_info FROM feed_state WHERE feed_id=?", (feed_id,)).fetchone()
+        row = self._q("SELECT channel_info FROM feed_state WHERE feed_id=?", (feed_id,), fetch="one")
         return json.loads(row["channel_info"]) if row and row["channel_info"] else {}

@@ -52,9 +52,12 @@ def evaluate(store: Store, yt: YouTube, feed: FeedConfig, entry: dict, fetch: bo
     return video, reason
 
 
-def download(cfg: Config, feed: FeedConfig, store: Store, yt: YouTube, video: Video) -> Episode:
+def download(cfg: Config, feed: FeedConfig, store: Store, yt: YouTube, video: Video,
+             progress=None) -> Episode:
     log.info("[%s] downloading %s - %s", feed.id, video.id, video.title)
-    path = yt.download_audio(video.id, cfg.audio_dir / feed.id, feed.audio_format, feed.sponsorblock_remove)
+    kwargs = {"progress": progress} if progress else {}
+    path = yt.download_audio(video.id, cfg.audio_dir / feed.id, feed.audio_format, feed.sponsorblock_remove,
+                             **kwargs)
     ep = Episode(
         feed_id=feed.id,
         video_id=video.id,

@@ -139,6 +139,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("feed", nargs="*")
     s.set_defaults(func=cmd_feed)
 
+    s = sub.add_parser("ui", help="open the local web interface (works without a config file)")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    s.set_defaults(func=None)
+
     sub.add_parser("serve", help="only serve feeds and audio over HTTP").set_defaults(func=cmd_serve)
     sub.add_parser("run", help="serve + sync every check_interval").set_defaults(func=cmd_run)
     return p
@@ -152,6 +158,13 @@ def main(argv: list[str] | None = None) -> int:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     try:
+        if args.command == "ui":
+            from pathlib import Path
+
+            from .ui import run_ui
+
+            run_ui(Path(args.config), args.host, args.port, open_browser=not args.no_browser)
+            return 0
         cfg = load_config(args.config)
         return args.func(cfg, args)
     except ConfigError as e:

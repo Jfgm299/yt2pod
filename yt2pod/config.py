@@ -120,7 +120,7 @@ class FeedConfig:
     scan_limit: int = 30
     backfill: int = 3
     max_episodes: int | None = None
-    audio_format: str = "m4a"
+    audio_format: str = "best"
     sponsorblock_remove: list[str] = field(default_factory=list)
 
 
@@ -153,7 +153,7 @@ class Config:
         raise ConfigError(f"Feed {feed_id!r} not found. Available: {', '.join(x.id for x in self.feeds)}")
 
 
-_AUDIO_FORMATS = {"m4a", "mp3", "opus"}
+_AUDIO_FORMATS = {"best", "m4a", "mp3", "opus"}
 
 
 def load_config(path: str | Path) -> Config:
@@ -190,7 +190,7 @@ def config_from_dict(raw: dict[str, Any], base_dir: Path = Path(".")) -> Config:
         seen.add(fid)
 
         filters = Filters.from_dict(merge_dicts(defaults.get("filters") or {}, item.get("filters") or {}))
-        audio_format = str(item.get("audio_format", defaults.get("audio_format", "m4a")))
+        audio_format = str(item.get("audio_format", defaults.get("audio_format", "best")))
         if audio_format not in _AUDIO_FORMATS:
             raise ConfigError(f"audio_format must be one of {sorted(_AUDIO_FORMATS)}")
         max_eps = item.get("max_episodes", defaults.get("max_episodes"))

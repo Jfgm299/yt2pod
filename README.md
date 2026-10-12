@@ -40,7 +40,43 @@ cp config.example.yaml config.yaml
 docker compose up -d
 ```
 
-## Uso
+## Probarlo en local con la interfaz
+
+```bash
+pip install .
+yt2pod ui
+```
+
+Se abre `http://localhost:8765` en el navegador (no hace falta `config.yaml`). El flujo es:
+
+1. Escribes un canal (`@handle` o URL) o una lista de reproducción.
+2. Ajustas los filtros: duración mínima/máxima, palabras que el título debe contener o que lo descartan,
+   Shorts, directos, fecha.
+3. **Buscar vídeos**: ves qué vídeos pasan los filtros y por qué se descarta cada uno.
+4. Eliges el formato de audio y pulsas **Preparar audio**: verás el progreso, el códec y bitrate reales
+   del archivo, un reproductor para escucharlo y la URL del feed.
+5. **Guardar como feed vigilado** lo añade a `config.yaml`, y `yt2pod run` descargará desde entonces
+   los vídeos nuevos que pasen esos filtros.
+
+## Calidad de audio
+
+YouTube no guarda el audio en calidad "de estudio": los streams disponibles son normalmente
+**Opus ~130-160 kbps** (formato 251) y **AAC 128 kbps** (formato 140). Ninguna herramienta puede
+sacar más calidad de la que YouTube sirve, así que la clave es **no perderla por el camino**:
+
+| `audio_format` | Qué hace | Calidad |
+|---|---|---|
+| `best` (por defecto) | Copia el mejor stream tal cual (normalmente Opus → `.opus`) | Máxima, sin recodificar |
+| `m4a` | Copia el stream AAC 128 kbps | Sin recodificar; la mejor opción para iPhone/Apple Podcasts |
+| `opus` | Copia el stream Opus | Igual que `best` cuando hay Opus |
+| `mp3` | Recodifica a MP3 VBR V0 (~245 kbps) | Pierde algo: recodificar nunca mejora la calidad |
+
+- yt-dlp ya prefiere la pista de **idioma original** frente a los doblajes automáticos.
+- Con `cookies_file` de una cuenta **YouTube Premium**, algunos vídeos ofrecen Opus ~256 kbps (formato 774),
+  que `best` elegirá automáticamente.
+- La interfaz muestra el códec, el bitrate y si el archivo es original o recodificado.
+
+## Uso por línea de comandos
 
 ```bash
 yt2pod browse full-episodes -r      # ver los vídeos del canal y por qué se filtran

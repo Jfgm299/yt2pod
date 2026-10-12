@@ -28,9 +28,13 @@ class FakeYouTube:
         e = next(x for x in self.entries if x["id"] == vid)
         return {**e, "description": f"desc {vid}"}
 
-    def download_audio(self, vid, out_dir, audio_format="m4a", sponsorblock_remove=None):
+    def download_audio(self, vid, out_dir, audio_format="m4a", sponsorblock_remove=None, progress=None):
         out_dir.mkdir(parents=True, exist_ok=True)
-        path = out_dir / f"{vid}.{audio_format}"
+        ext = "m4a" if audio_format == "best" else audio_format
+        path = out_dir / f"{vid}.{ext}"
+        if progress:
+            progress({"status": "downloading", "percent": 50.0})
+            progress({"status": "finished", "file": path.name, "acodec": "opus", "abr": 160})
         path.write_bytes(b"x" * 1000)
         self.downloads.append(vid)
         return path
@@ -108,7 +112,7 @@ def test_filters():
 # --- sync -----------------------------------------------------------------
 
 def test_first_sync_backfills_then_picks_up_new_videos(tmp_path):
-    cfg = make_cfg(tmp_path, backfill=2, filters={"min_duration": "20m"})
+    cfg = make_cfg(tmp_path, backfill=2, audio_format="m4a", filters={"min_duration": "20m"})
     feed = cfg.feeds[0]
     store = Store(cfg.db_path)
     yt = FakeYouTube([entry("v5", 3600), entry("clip4", 120), entry("v3", 4000),
@@ -211,5 +215,68 @@ def test_server_serves_feed_and_ranges(tmp_path):
             assert b"/feeds/test.xml" in r.read()
         with pytest.raises(urllib.error.HTTPError):
             urllib.request.urlopen(f"{base}/yt2pod.sqlite3")
+    finally:
+        httpd.shutdown()
+
+
+# --- web UI ---------------------------------------------------------------
+
+def test_ui_search_download_and_save(tmp_path):
+    import json
+    import time
+    from http.server import ThreadingHTTPServer
+
+    import yaml
+
+    from yt2pod import ui
+
+    config_path = tmp_path / "config.yaml"
+    app = ui.App(ui.default_config(config_path, 0), config_path)
+    app.yt = FakeYouTube([entry("long1", 3600), entry("clip2", 200)])
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ui.make_ui_handler(app))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+
+    def post(path, body):
+        req = urllib.request.Request(base + path, data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, json.load(r)
+        except urllib.error.HTTPError as e:
+            return e.code, json.load(e)
+
+    req = {"source": "@fake", "feed_id": "fake", "audio_format": "best",
+           "filters": {"min_duration": "20m", "max_duration": "", "title_exclude": ["", "clip"]}}
+    try:
+        with urllib.request.urlopen(base + "/") as r:
+            assert b"yt2pod" in r.read()
+        status, data = post("/api/search", req)
+        assert status == 200
+        assert [(v["id"], v["reason"] is None) for v in data["videos"]] == [("long1", True), ("clip2", False)]
+
+        assert post("/api/search", {**req, "feed_id": "Bad Name"})[0] == 400
+        assert post("/api/search", {**req, "filters": {"min_duration": "veinte"}})[0] == 400
+
+        status, data = post("/api/download", {**req, "videos": [{"id": "long1", "title": "Long"}]})
+        assert status == 200 and len(data["jobs"]) == 1
+        for _ in range(50):
+            with urllib.request.urlopen(base + "/api/jobs") as r:
+                jobs = json.load(r)
+            if jobs[0]["status"] in ("done", "error"):
+                break
+            time.sleep(0.05)
+        assert jobs[0]["status"] == "done", jobs
+        assert jobs[0]["file"] == "/audio/fake/long1.m4a"
+        with urllib.request.urlopen(base + "/feeds/fake.xml") as r:
+            assert b"yt:long1" in r.read()
+
+        status, data = post("/api/save-feed", req)
+        assert status == 200
+        saved = yaml.safe_load(config_path.read_text())
+        assert saved["feeds"] == [{"id": "fake", "source": "@fake", "audio_format": "best",
+                                   "filters": {"min_duration": "20m", "title_exclude": ["clip"]}}]
+        ui_cfg = __import__("yt2pod.config", fromlist=["load_config"]).load_config(config_path)
+        assert ui_cfg.feeds[0].filters.min_duration == 1200
     finally:
         httpd.shutdown()

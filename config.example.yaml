@@ -18,7 +18,8 @@ server:
 
 # Applied to every feed; each feed can override any of these.
 defaults:
-  audio_format: m4a      # m4a (no re-encode, fastest), mp3 (most compatible), opus (smallest)
+  audio_format: best     # best: YouTube's best stream untouched (Opus/AAC, max quality)
+                         # m4a: AAC copy, best for iPhone · mp3: re-encoded, most compatible
   scan_limit: 30         # how many of the newest videos to look at on each check
   backfill: 3            # on the very first sync, download only the N newest matching videos
   max_episodes: 50       # keep at most N episodes per feed (oldest files are deleted); omit for unlimited

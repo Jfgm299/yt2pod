@@ -19,3 +19,6 @@ yt2pod = "yt2pod.cli:main"
 
 [tool.setuptools]
 packages = ["yt2pod"]
+
+[tool.setuptools.package-data]
+yt2pod = ["ui.html"]
