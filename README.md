@@ -16,8 +16,10 @@ automatic downloads of new uploads and listening progress synced across devices.
   y, si quieres, palabras que el título debe contener o no. Los Shorts y directos se ignoran.
 - **Elegir episodios anteriores** del canal: tócalos uno a uno o usa *Seleccionar → Solo los de +20 min*.
 - **Escuchar**: *Continuar* (lo que tienes a medias) y *Nuevos episodios*, con estado de descarga en vivo.
-- **Reproductor** con ±15/30 s, velocidad, controles en la pantalla de bloqueo y atajos de teclado
+- **Reproductor** con ±15/30 s, velocidad, temporizador para dormir (pausa a los 5–90 min), controles en la pantalla de bloqueo y atajos de teclado
   (espacio, ←, →). La posición se guarda cada pocos segundos y al salir.
+- **Almacenamiento**: cada episodio muestra lo que ocupa; en *Ajustes* ves el total y el espacio libre,
+  y puedes borrar de golpe los ya escuchados o los que más ocupan.
 - **Cuentas**: entra con el mismo usuario desde el móvil y el ordenador. Puedes crear cuentas para
   otras personas; cada una tiene sus canales y su progreso, y el audio se descarga una sola vez.
 - **Feed RSS privado** por cuenta, por si prefieres Overcast, Pocket Casts o Apple Podcasts.
@@ -31,8 +33,11 @@ llegan tu móvil y tu ordenador. Dos opciones:
 | | Servidor en casa (recomendado) | VPS |
 |---|---|---|
 | Ejemplos | Raspberry Pi, NAS, un PC que no apagues | Hetzner, DigitalOcean… |
-| YouTube | Funciona: tu IP es doméstica | A menudo bloquea IPs de centros de datos («Sign in to confirm you're not a bot»). Se arregla subiendo tus cookies de YouTube en *Ajustes → Acceso a YouTube*. |
+| YouTube | Funciona: tu IP es doméstica | A menudo bloquea IPs de centros de datos («Sign in to confirm you're not a bot»). Se arregla subiendo tus cookies de YouTube en *Ajustes → Acceso a YouTube* ([guía](docs/cookies.md)). |
 | Acceso desde fuera | [Tailscale](https://tailscale.com) (gratis): `tailscale serve --bg 8765` te da `https://<equipo>.<tailnet>.ts.net` con HTTPS | Dominio + HTTPS (Caddy o similar) |
+
+Si YouTube bloquea las descargas («no eres un bot»), sigue la guía **[Cookies de YouTube](docs/cookies.md)**:
+explica paso a paso cómo exportarlas, cuánto duran y qué hacer si dejan de valer.
 
 **La PWA necesita HTTPS** para instalarse y funcionar sin conexión (salvo en `localhost`).
 Con Tailscale o Caddy lo tienes sin hacer nada más.

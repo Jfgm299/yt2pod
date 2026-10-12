@@ -311,6 +311,22 @@ class DB:
     def remove_from_library(self, user_id: int, video_id: str) -> None:
         self.x("UPDATE library SET state='removed' WHERE user_id=? AND video_id=?", (user_id, video_id))
 
+    def storage(self, user_id: int) -> dict:
+        """How much audio this user's downloaded episodes take, and how much of it is already listened to."""
+        row = self.one("""SELECT COUNT(*) AS count, COALESCE(SUM(d.filesize), 0) AS bytes,
+                                 COALESCE(SUM(l.played), 0) AS played_count,
+                                 COALESCE(SUM(CASE WHEN l.played=1 THEN d.filesize END), 0) AS played_bytes
+                          FROM library l JOIN downloads d ON d.video_id=l.video_id
+                          WHERE l.user_id=? AND l.state='active' AND d.status='done'""", (user_id,))
+        return dict(row)
+
+    def server_storage(self) -> int:
+        return self.one("SELECT COALESCE(SUM(filesize), 0) AS b FROM downloads WHERE status='done'")["b"]
+
+    def played_episode_ids(self, user_id: int) -> list[str]:
+        return [r["video_id"] for r in self.q(
+            "SELECT video_id FROM library WHERE user_id=? AND state='active' AND played=1", (user_id,))]
+
     def set_progress(self, user_id: int, video_id: str, position: float, played: bool | None = None,
                      at: str | None = None) -> bool:
         """Store the listening position. `at` is when the client recorded it; an older write

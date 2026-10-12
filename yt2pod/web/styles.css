@@ -204,6 +204,7 @@ button.cell:active, .cell.tappable:active { background: var(--fill); transition:
 .btn.small { height: 32px; padding: 0 14px; font-size: 0.9375rem; border-radius: 999px; }
 .btn.pill { border-radius: 999px; }
 .btn.danger { color: var(--danger); }
+.btn.tinted.danger { background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .link-btn { color: var(--accent); font-size: 1.0625rem; padding: 6px 2px; transition: opacity 120ms; }
 .link-btn:active { opacity: 0.45; transition: none; }
 .link-btn.small { font-size: 0.9375rem; }
@@ -298,6 +299,10 @@ img.fade.loaded { opacity: 1; }
 .ep .title { font-size: 0.9375rem; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
 .ep.played .title { color: var(--label-2); font-weight: 500; }
 .ep .meta { font-size: 0.8125rem; color: var(--label-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* Items separated by dots; a dot that would start a wrapped line is pushed out of view. */
+.ep .meta.dots { display: flex; flex-wrap: wrap; gap: 0 16px; overflow: hidden; }
+.ep .meta.dots > span { margin-left: -10px; }
+.ep .meta.dots > span::before { content: "·"; display: inline-block; width: 4px; margin-right: 6px; }
 .ep .meta .warn { color: var(--danger); }
 .ep .meta .note { color: var(--label-3); }
 .ep .trail { display: flex; align-items: center; gap: 0; }
@@ -471,6 +476,9 @@ img.fade.loaded { opacity: 1; }
 .player .desc { color: var(--label-2); font-size: 0.9375rem; white-space: pre-wrap; overflow-wrap: anywhere; border-top: 0.5px solid var(--separator); padding-top: 18px; }
 .rate-btn { min-width: 52px; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--fill); font-weight: 600; font-size: 0.9375rem; font-variant-numeric: tabular-nums; }
 .rate-btn:active { transform: scale(0.94); }
+.sleep-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--label); }
+.sleep-btn svg { width: 17px; height: 17px; }
+.sleep-btn.on { background: var(--accent-soft); color: var(--accent); }
 
 /* scrubber */
 .scrubber { position: relative; height: 28px; display: flex; align-items: center; cursor: pointer; touch-action: none; flex: 1; }

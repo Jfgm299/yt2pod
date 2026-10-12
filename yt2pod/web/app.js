@@ -1,9 +1,9 @@
 // yt2pod PWA. Preact + htm, no build step.
 import { html, render, useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "/vendor/htm-preact.js";
-import { api, relDate, humanDuration, clock, remaining, subscribers, initials, tint, Icon, spring, project, rubberband, haptic } from "/lib.js";
+import { api, relDate, humanDuration, clock, remaining, subscribers, fileSize, initials, tint, Icon, spring, project, rubberband, haptic } from "/lib.js";
 import {
   useStore, getState, setState, boot, afterLogin, logout, loadEpisodes, loadSubs, addEpisodes, subscribe,
-  unsubscribe, removeEpisode, setPlayed, retry, pollActivity, player, toast, dismissToast,
+  unsubscribe, removeEpisode, removePlayed, setPlayed, retry, pollActivity, player, toast, dismissToast,
 } from "/store.js";
 
 // --- routing ---------------------------------------------------------------------------
@@ -134,7 +134,7 @@ function EpisodeRow({ ep, showChannel = true }) {
     <div class="body" onClick=${open}>
       ${showChannel ? html`<span class="kicker clamp1">${ep.channel_title}</span>` : null}
       <span class="title clamp2">${ep.title}</span>
-      <span class="meta">${relDate(ep.published || ep.added_at)}<span aria-hidden="true">·</span>${statusLine(ep)}</span>
+      <span class="meta dots"><span>${relDate(ep.published || ep.added_at)}</span>${statusLine(ep)}${ep.download_status === "done" && ep.filesize ? html`<span>${fileSize(ep.filesize)}</span>` : null}</span>
     </div>
     <div class="trail">
       <${EpisodeAction} ep=${ep}/>
@@ -529,6 +529,8 @@ function SettingsScreen() {
       <p class="foot-note">Pégalo en Overcast, Pocket Casts o Apple Podcasts si prefieres escuchar allí. Es secreto: quien lo tenga puede escuchar tus episodios. El progreso de esas apps no se sincroniza con yt2pod.</p>
     </section>
 
+    <${StorageSection} admin=${user.is_admin}/>
+
     ${user.is_admin ? html`<${CookiesSection}/>` : null}
 
     <section class="section">
@@ -552,6 +554,41 @@ function SettingsScreen() {
 
     <p class="foot-note" style="text-align:center;margin:28px 0 8px">yt2pod ${getState().session.version || ""}</p>
   <//>`;
+}
+
+/** What the downloaded audio takes, with ways to free space. */
+function StorageSection({ admin }) {
+  const episodes = useStore((s) => s.episodes);
+  const [st, setSt] = useState(null);
+  const [list, setList] = useState(false);
+  // Re-read the totals only when something that changes them does: a download finishing, a delete, a play.
+  const key = episodes.map((e) => `${e.id}${e.download_status}${e.played}`).join();
+  useEffect(() => { api("/api/storage").then(setSt).catch(() => {}); }, [key]);
+  const clearPlayed = () => openActions({
+    title: `${st.played_count === 1 ? "Se borrará 1 episodio ya escuchado" : `Se borrarán ${st.played_count} episodios ya escuchados`} (${fileSize(st.played_bytes)}). No se puede deshacer.`,
+    actions: [{ label: "Borrar escuchados", destructive: true, run: async () => {
+      try { const n = await removePlayed(); toast(`${n} episodio${n === 1 ? "" : "s"} borrado${n === 1 ? "" : "s"}`); } catch (e) { toast(e.message); }
+    } }],
+  });
+  const biggest = episodes.filter((e) => e.download_status === "done" && e.filesize).sort((a, b) => b.filesize - a.filesize);
+  const head = html`<div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Almacenamiento</h2></div>`;
+  return html`<section class="section">
+    ${head}
+    <div class="group">
+      <div class="cell"><span class="grow">Tus episodios</span><span class="cell-value num">${st ? `${st.count} · ${fileSize(st.bytes) || "0 MB"}` : "…"}</span></div>
+      <div class="cell"><div class="grow"><div>Ya escuchados</div><div class="t-foot dim num">${st ? `${st.played_count} · ${fileSize(st.played_bytes) || "0 MB"}` : "…"}</div></div>
+        <button class="btn small tinted danger" disabled=${!st?.played_count} onClick=${clearPlayed}>Borrar</button></div>
+      ${admin && st ? html`<div class="cell"><span class="grow">Total en el servidor</span><span class="cell-value num">${fileSize(st.server_bytes) || "0 MB"}</span></div>
+        <div class="cell"><span class="grow">Espacio libre</span><span class="cell-value num">${fileSize(st.disk_free)}</span></div>` : null}
+      ${biggest.length ? html`<button class="cell" onClick=${() => setList(!list)}><span class="grow" style="color:var(--accent)">${list ? "Ocultar episodios" : "Ver episodios por tamaño"}</span><${Icon.chev} class="chev" style=${list ? "transform:rotate(90deg)" : ""}/></button>` : null}
+      ${list ? biggest.map((ep) => html`<div class="cell" key=${ep.id}>
+        <div class="grow"><div class="clamp1">${ep.title}</div><div class="t-foot dim clamp1">${ep.channel_title}${ep.played ? " · escuchado" : ""}</div></div>
+        <span class="cell-value num t-sub">${fileSize(ep.filesize)}</span>
+        <button class="icon-btn" style="color:var(--danger)" aria-label=${"Eliminar " + ep.title} onClick=${() => removeEpisode(ep)}><${Icon.xcircle} style="width:22px;height:22px"/></button>
+      </div>`) : null}
+    </div>
+    <p class="foot-note">Borrar un episodio quita su audio del servidor${admin ? " salvo que otra cuenta lo tenga en su lista" : ""}. Puedes volver a añadirlo desde la página del canal.</p>
+  </section>`;
 }
 
 /** Upload a cookies.txt so YouTube stops treating the server as a bot. */
@@ -588,11 +625,12 @@ function CookiesSection() {
       <button class="cell" onClick=${() => setHelp(!help)}><span class="grow">Cómo conseguir el archivo</span><${Icon.chev} class="chev" style=${{ transform: help ? "rotate(90deg)" : "none", transition: "transform 200ms" }}/></button>
       ${help ? html`<div class="cell t-sub" style="display:block;line-height:1.5">
         <ol style="margin:0;padding-left:20px">
-          <li>En el ordenador, abre una ventana de incógnito y entra en youtube.com con una cuenta de Google secundaria (mejor no la principal).</li>
-          <li>Instala la extensión <strong>Get cookies.txt LOCALLY</strong> (Chrome) o <strong>cookies.txt</strong> (Firefox).</li>
-          <li>Con youtube.com abierto, exporta las cookies en formato Netscape y cierra la ventana de incógnito sin cerrar sesión.</li>
-          <li>Sube aquí ese archivo. Las descargas bloqueadas se reintentan solas.</li>
-        </ol></div>` : null}
+          <li>En el ordenador, instala la extensión <strong>Get cookies.txt LOCALLY</strong> (Chrome) o <strong>cookies.txt</strong> (Firefox) y permítela en incógnito.</li>
+          <li>Abre una ventana de incógnito y entra en youtube.com con una cuenta de Google secundaria (mejor no la principal).</li>
+          <li>En esa pestaña ve a youtube.com/robots.txt y exporta las cookies en formato Netscape.</li>
+          <li>Cierra la ventana de incógnito sin cerrar sesión, y sube aquí el archivo. Las descargas bloqueadas se reintentan solas.</li>
+        </ol>
+        <a href="https://github.com/Jfgm299/yt2pod/blob/main/docs/cookies.md" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px">Guía completa</a></div>` : null}
     </div>
     <p class="foot-note">YouTube trata a muchos servidores en la nube como bots. Con las cookies de una cuenta, yt2pod descarga como si fueras tú. Se guardan solo en tu servidor. Si dejan de funcionar al cabo de unas semanas, vuelve a subirlas.</p>
   </section>`;
@@ -761,10 +799,33 @@ function FullPlayer({ onDragStart, close }) {
     </div>
     <div class="bottom">
       <button class="rate-btn" aria-label=${"Velocidad " + p.rate + "x"} onClick=${() => { haptic(4); player.setRate(nextRate); }}>${String(p.rate).replace(".", ",")}×</button>
+      <${SleepButton} sleepAt=${p.sleepAt}/>
       <button class="link-btn small" onClick=${() => setPlayed(ep, true)}>Marcar como escuchado</button>
     </div>
     ${ep.description ? html`<div class="desc">${desc ? ep.description : ep.description.slice(0, 280)}${!desc && ep.description.length > 280 ? html`… <button class="link-btn small" onClick=${() => setDesc(true)}>Más</button>` : null}</div>` : null}
   </div>`;
+}
+
+const SLEEP = [5, 10, 15, 30, 45, 60, 90];
+/** Sleep timer: pause playback after a while. Shows the time left while it runs. */
+function SleepButton({ sleepAt }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!sleepAt) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [sleepAt]);
+  const left = sleepAt ? Math.max(0, (sleepAt - Date.now()) / 1000) : 0;
+  const choose = () => openActions({
+    title: sleepAt ? `Se pausará en ${clock(left)}` : "Pausar la reproducción dentro de…",
+    actions: [
+      ...SLEEP.map((m) => ({ label: m < 60 ? `${m} minutos` : m === 60 ? "1 hora" : `${m / 60} horas`.replace(".", ","), run: () => { player.setSleep(m); toast(`Se pausará en ${m} min`); } })),
+      ...(sleepAt ? [{ label: "Desactivar temporizador", destructive: true, run: () => player.setSleep(null) }] : []),
+    ],
+  });
+  return html`<button class=${"rate-btn sleep-btn" + (sleepAt ? " on" : "")} aria-label=${sleepAt ? `Temporizador: quedan ${clock(left)}` : "Temporizador"} onClick=${choose}>
+    <${Icon.moon}/>${sleepAt ? html`<span>${clock(left)}</span>` : null}
+  </button>`;
 }
 
 function Scrubber({ position, duration }) {
@@ -829,7 +890,7 @@ function openEpisodeActions(ep) {
       ep.played ? { label: "Marcar como no escuchado", run: () => setPlayed(ep, false) } : { label: "Marcar como escuchado", run: () => setPlayed(ep, true) },
       { label: "Ir al canal", run: () => { setState({ sheet: null }); navigate("/canal/" + ep.channel_id); } },
       { label: "Ver en YouTube", run: () => open(`https://www.youtube.com/watch?v=${ep.id}`, "_blank", "noopener") },
-      { label: "Eliminar descarga", destructive: true, run: () => removeEpisode(ep) },
+      { label: ep.filesize ? `Eliminar descarga (${fileSize(ep.filesize)})` : "Eliminar descarga", destructive: true, run: () => removeEpisode(ep) },
     ],
   });
 }

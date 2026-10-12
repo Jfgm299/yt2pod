@@ -68,6 +68,14 @@ export function remaining(ep) {
   return left < 60 ? "menos de 1 min" : `quedan ${humanDuration(left)}`;
 }
 
+const decimal = new Intl.NumberFormat("es", { maximumFractionDigits: 1 });
+export function fileSize(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1e6) return `${Math.max(1, Math.round(bytes / 1e3))} kB`;
+  if (bytes < 1e9) return `${Math.round(bytes / 1e6)} MB`;
+  return `${decimal.format(bytes / 1e9)} GB`;
+}
+
 export const subscribers = (n) => (n ? `${compact.format(n)} suscriptores` : "");
 
 export function initials(name = "") {
@@ -142,5 +150,6 @@ export const Icon = {
   waveform: svg(html`<rect x="2.5" y="10" width="2.2" height="4" rx="1.1"/><rect x="6.6" y="6.5" width="2.2" height="11" rx="1.1"/><rect x="10.8" y="3" width="2.2" height="18" rx="1.1"/><rect x="15" y="7.5" width="2.2" height="9" rx="1.1"/><rect x="19.2" y="10" width="2.2" height="4" rx="1.1"/>`),
   warn: svg(html`<path d="M12 2.8c.6 0 1.1.3 1.4.8l8.6 15.2c.6 1.1-.2 2.4-1.4 2.4H3.4c-1.2 0-2-1.3-1.4-2.4l8.6-15.2c.3-.5.8-.8 1.4-.8zm0 13.6a1.3 1.3 0 100 2.6 1.3 1.3 0 000-2.6zm0-8.2c-.8 0-1.3.6-1.2 1.4l.4 5c0 .5.4.8.8.8s.8-.3.8-.8l.4-5c.1-.8-.4-1.4-1.2-1.4z"/>`),
   refresh: svg(html`<path d="M20 11a8 8 0 10-2.3 5.7M20 4.5V11h-6.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`),
+  moon: svg(html`<path d="M20.2 14.6A8.5 8.5 0 019.4 3.8a.6.6 0 00-.8-.7A9.5 9.5 0 1020.9 15.4a.6.6 0 00-.7-.8z"/>`),
   bell: svg(html`<path d="M12 2.5a6.5 6.5 0 00-6.5 6.5v4.2L3.8 16a1 1 0 00.9 1.5h14.6a1 1 0 00.9-1.5l-1.7-2.8V9A6.5 6.5 0 0012 2.5zM9.2 19a2.9 2.9 0 005.6 0z"/>`),
 };

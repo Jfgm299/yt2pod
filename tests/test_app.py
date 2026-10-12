@@ -146,6 +146,25 @@ def test_removed_episode_is_not_downloaded_again_and_file_is_pruned(env, tmp_pat
     assert app.state.worker.check_channel(LA_PIZARRA) == []
 
 
+def test_storage_and_removing_played_episodes(env, tmp_path):
+    client, app, yt = env
+    subscribe(client)
+    yt.publish(LA_PIZARRA, "ep4aaaaaaaa", "#4", 4000)
+    yt.publish(LA_PIZARRA, "ep5aaaaaaaa", "#5", 4000)
+    app.state.worker.check_channel(LA_PIZARRA)
+    drain(app)
+    st = client.get("/api/storage").json()
+    assert st["count"] == 2 and st["bytes"] > 0 and st["played_count"] == 0
+    assert st["server_bytes"] == st["bytes"] and st["disk_free"] > 0
+    assert all(e["filesize"] for e in client.get("/api/episodes").json())
+    client.post("/api/episodes/ep4aaaaaaaa/played", json={"played": True})
+    st = client.get("/api/storage").json()
+    assert st["played_count"] == 1 and 0 < st["played_bytes"] < st["bytes"]
+    assert client.post("/api/episodes/remove-played").json()["removed"] == ["ep4aaaaaaaa"]
+    assert [e["id"] for e in client.get("/api/episodes").json()] == ["ep5aaaaaaaa"]
+    assert len(list((tmp_path / "audio").rglob("*.m4a"))) == 1
+
+
 # --- progress, synced between devices ------------------------------------------------
 def test_progress_is_shared_between_devices_and_newest_wins(env):
     client, app, _ = env

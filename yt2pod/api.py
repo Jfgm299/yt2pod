@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import shutil
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -314,6 +315,23 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
     @app.get("/api/episodes/{video_id}")
     def episode(video_id: str, user: dict = Depends(current_user)):
         return owned(user, video_id)
+
+    @app.get("/api/storage")
+    def storage(user: dict = Depends(current_user)):
+        out = db.storage(user["id"])
+        if user["is_admin"]:
+            settings.audio_dir.mkdir(parents=True, exist_ok=True)
+            out["server_bytes"] = db.server_storage()
+            out["disk_free"] = shutil.disk_usage(settings.audio_dir).free
+        return out
+
+    @app.post("/api/episodes/remove-played")
+    def remove_played(user: dict = Depends(current_user)):
+        ids = db.played_episode_ids(user["id"])
+        for vid in ids:
+            db.remove_from_library(user["id"], vid)
+        worker.prune()
+        return {"removed": ids}
 
     @app.delete("/api/episodes/{video_id}")
     def remove_episode(video_id: str, user: dict = Depends(current_user)):

@@ -15,7 +15,7 @@ let state = {
   episodesLoaded: false,
   subs: LS.get("subs", []),
   subsLoaded: false,
-  player: { id: null, playing: false, position: 0, duration: 0, rate: LS.get("rate", 1), loading: false },
+  player: { id: null, playing: false, position: 0, duration: 0, rate: LS.get("rate", 1), loading: false, sleepAt: null },
   sheet: null,      // "player" when the full player is open
   actions: null,    // the open action sheet, if any
   toast: null,
@@ -142,6 +142,15 @@ export function removeEpisode(ep) {
   toast("Episodio eliminado", { label: "Deshacer", run: () => { undone = true; clearTimeout(timer); setState({ episodes: before }); } });
 }
 
+/** Remove every episode already listened to, after the user confirmed it. */
+export async function removePlayed() {
+  const { removed } = await api("/api/episodes/remove-played", { method: "POST" });
+  if (removed.includes(state.player.id)) player.unload();
+  setState({ episodes: state.episodes.filter((e) => !removed.includes(e.id)) });
+  loadSubs();
+  return removed.length;
+}
+
 export async function setPlayed(ep, played) {
   patchEpisode(ep.id, { played: played ? 1 : 0, position: 0 });
   if (state.player.id === ep.id && played) player.pause();
@@ -265,11 +274,29 @@ function positionState() {
   } catch {}
 }
 
+// Sleep timer. Checked from a timer and from timeupdate, because a locked phone may pause the
+// page's timers while audio keeps playing. The last seconds fade out where volume can be set.
+const FADE = 8000;
+let sleepTimer = null;
+function checkSleep() {
+  const at = state.player.sleepAt;
+  if (!at) return;
+  const left = at - Date.now();
+  if (left <= 0) {
+    player.setSleep(null);
+    audio.pause();
+    toast("Temporizador: reproducción en pausa");
+  } else if (left < FADE && !audio.paused) {
+    audio.volume = Math.max(0.05, left / FADE);
+  }
+}
+
 let lastTick = 0;
 audio.addEventListener("timeupdate", () => {
   const now = performance.now();
   if (now - lastTick < 250) return;
   lastTick = now;
+  checkSleep();
   setPlayer({ position: audio.currentTime });
   if (Math.abs(audio.currentTime - lastSaved) >= 15) saveProgress();
 });
@@ -279,7 +306,7 @@ audio.addEventListener("loadedmetadata", () => {
   positionState();
 });
 audio.addEventListener("play", () => { setPlayer({ playing: true }); navigator.mediaSession && (navigator.mediaSession.playbackState = "playing"); });
-audio.addEventListener("pause", () => { setPlayer({ playing: false }); saveProgress({ force: true }); navigator.mediaSession && (navigator.mediaSession.playbackState = "paused"); });
+audio.addEventListener("pause", () => { audio.volume = 1; setPlayer({ playing: false }); saveProgress({ force: true }); navigator.mediaSession && (navigator.mediaSession.playbackState = "paused"); });
 audio.addEventListener("waiting", () => setPlayer({ loading: true }));
 audio.addEventListener("playing", () => setPlayer({ loading: false }));
 audio.addEventListener("seeked", () => { saveProgress({ force: true }); positionState(); });
@@ -329,7 +356,17 @@ export const player = {
     LS.set("rate", rate);
     setPlayer({ rate });
   },
+  /** Pause after `minutes` (null turns the timer off). */
+  setSleep(minutes) {
+    clearInterval(sleepTimer);
+    audio.volume = 1;
+    if (!minutes) { setPlayer({ sleepAt: null }); return; }
+    setPlayer({ sleepAt: Date.now() + minutes * 60000 });
+    sleepTimer = setInterval(checkSleep, 1000);
+    if (audio.paused) this.play();
+  },
   unload() {
+    this.setSleep(null);
     if (currentEp) saveProgress({ force: true });
     audio.pause();
     audio.removeAttribute("src");
