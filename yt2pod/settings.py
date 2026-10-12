@@ -39,6 +39,11 @@ class Settings:
         return self.data_dir / "yt2pod.sqlite3"
 
     @property
+    def cookies_path(self) -> Path:
+        """YouTube cookies: the file named in YT2POD_COOKIES_FILE, else the one uploaded from the app."""
+        return Path(self.cookies_file) if self.cookies_file else self.data_dir / "cookies.txt"
+
+    @property
     def audio_dir(self) -> Path:
         return self.data_dir / "audio"
 

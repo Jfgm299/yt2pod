@@ -70,7 +70,7 @@ def cmd_doctor(settings: Settings, args) -> int:
     import yt_dlp
 
     line(True, f"yt-dlp {yt_dlp.version.__version__} (si falla algo: pip install -U yt-dlp)")
-    yt = YouTube(settings.cookies_file)
+    yt = YouTube(settings.cookies_path)
     channel = args.channel or "UCBR8-60-B28hp2BmDPdntcQ"  # YouTube's own channel
     try:
         entries = yt.channel_feed(channel)

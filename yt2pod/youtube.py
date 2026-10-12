@@ -122,14 +122,20 @@ def entry_to_video(entry: dict, channel_id: str | None = None) -> dict:
 
 
 class YouTube:
-    def __init__(self, cookies_file: str | None = None):
+    def __init__(self, cookies_file: str | Path | None = None):
+        # A path that may appear later (cookies uploaded from the app), so it's checked on each call.
         self.cookies_file = cookies_file
+
+    def cookies(self) -> str | None:
+        if self.cookies_file and Path(self.cookies_file).is_file():
+            return str(self.cookies_file)
+        return None
 
     # --- discovery ------------------------------------------------------
     def search_channels(self, query: str, limit: int = 12) -> list[dict]:
         import yt_dlp
 
-        opts = _base_opts(self.cookies_file) | {"extract_flat": "in_playlist", "playlistend": limit}
+        opts = _base_opts(self.cookies()) | {"extract_flat": "in_playlist", "playlistend": limit}
         url = _CHANNEL_SEARCH.format(q=quote_plus(query))
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -169,7 +175,7 @@ class YouTube:
     def _list(self, source: str, limit: int) -> tuple[list[dict], dict]:
         import yt_dlp
 
-        opts = _base_opts(self.cookies_file) | {
+        opts = _base_opts(self.cookies()) | {
             "extract_flat": "in_playlist",
             "playlistend": limit,
             "lazy_playlist": True,
@@ -194,7 +200,7 @@ class YouTube:
         if "/" not in url:
             url = f"https://www.youtube.com/watch?v={url}"
         try:
-            with yt_dlp.YoutubeDL(_base_opts(self.cookies_file)) as ydl:
+            with yt_dlp.YoutubeDL(_base_opts(self.cookies())) as ydl:
                 info = ydl.extract_info(url, download=False)
         except Exception as e:
             raise YouTubeError(f"Could not get info for {url}: {e}") from e
@@ -262,7 +268,7 @@ class YouTube:
             elif d.get("status") == "finished":
                 progress({"status": "processing"})
 
-        opts = _base_opts(self.cookies_file) | {
+        opts = _base_opts(self.cookies()) | {
             "format": fmt,
             "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
             "postprocessors": postprocessors,

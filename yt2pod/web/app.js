@@ -189,7 +189,7 @@ function ListenScreen() {
 
   return html`<${Page} title="Escuchar">
     ${blocked ? html`<div class="banner" style="margin-top:6px"><${Icon.warn}/><div>
-      <strong>YouTube está bloqueando las descargas.</strong> Pasa unas cookies a yt2pod o ejecútalo en un equipo de casa. <a href="/ajustes" onClick=${link("/ajustes")}>Más información</a></div></div>` : null}
+      <strong>YouTube está bloqueando las descargas.</strong> Se arregla subiendo tus cookies de YouTube. <a href="/ajustes" onClick=${link("/ajustes")}>Ir a Ajustes</a></div></div>` : null}
 
     ${cont.length ? html`<section class="section" style="margin-top:8px">
       <div class="section-head"><h2 class="t-title3">Continuar</h2></div>
@@ -529,6 +529,8 @@ function SettingsScreen() {
       <p class="foot-note">Pégalo en Overcast, Pocket Casts o Apple Podcasts si prefieres escuchar allí. Es secreto: quien lo tenga puede escuchar tus episodios. El progreso de esas apps no se sincroniza con yt2pod.</p>
     </section>
 
+    ${user.is_admin ? html`<${CookiesSection}/>` : null}
+
     <section class="section">
       <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Servidor</h2></div>
       <div class="group">
@@ -536,7 +538,6 @@ function SettingsScreen() {
         <div class="cell"><span class="grow">Frecuencia</span><span class="cell-value">cada ${me ? humanDuration(me.check_interval) : "…"}</span></div>
         <div class="cell"><span class="grow">Formato de audio</span><span class="cell-value">${me?.audio_format === "m4a" ? "AAC (m4a), sin recodificar" : me?.audio_format || "…"}</span></div>
       </div>
-      <p class="foot-note">Si YouTube bloquea las descargas («confirma que no eres un bot»), ejecuta yt2pod en un equipo de casa o configura <code>YT2POD_COOKIES_FILE</code>.</p>
     </section>
 
     ${users ? html`<section class="section">
@@ -551,6 +552,50 @@ function SettingsScreen() {
 
     <p class="foot-note" style="text-align:center;margin:28px 0 8px">yt2pod ${getState().session.version || ""}</p>
   <//>`;
+}
+
+/** Upload a cookies.txt so YouTube stops treating the server as a bot. */
+function CookiesSection() {
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [help, setHelp] = useState(false);
+  const file = useRef();
+  useEffect(() => { api("/api/cookies").then(setSt).catch(() => {}); }, []);
+  const upload = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setBusy(true);
+    try {
+      const r = await api("/api/cookies", { method: "PUT", body: { content: await f.text() } });
+      setSt(r);
+      toast(r.retried ? `Cookies guardadas. Reintentando ${r.retried} descarga${r.retried === 1 ? "" : "s"}…` : "Cookies guardadas");
+      setTimeout(() => loadEpisodes().then(pollActivity), 1500);
+    } catch (err) { toast(err.message); }
+    setBusy(false);
+  };
+  const remove = async () => { try { setSt(await api("/api/cookies", { method: "DELETE" })); toast("Cookies eliminadas"); } catch (e) { toast(e.message); } };
+  return html`<section class="section">
+    <div class="section-head"><h2 class="t-foot dim" style="text-transform:uppercase;letter-spacing:.04em">Acceso a YouTube</h2></div>
+    <div class="group">
+      <div class="cell">
+        <div class="grow"><div>Cookies de YouTube</div>
+          <div class="t-foot dim">${!st ? "…" : st.present ? `Configuradas ${st.updated_at ? relDate(st.updated_at) : ""}` : "Sin configurar"}</div></div>
+        <input ref=${file} type="file" accept=".txt,text/plain" style="display:none" onChange=${upload}/>
+        <button class="btn small tinted" disabled=${busy} onClick=${() => file.current.click()}>${busy ? "Subiendo…" : st?.present ? "Reemplazar" : "Subir cookies.txt"}</button>
+      </div>
+      ${st?.present && !st.from_env ? html`<button class="cell" onClick=${remove}><span class="grow" style="color:var(--danger)">Eliminar cookies</span></button>` : null}
+      <button class="cell" onClick=${() => setHelp(!help)}><span class="grow">Cómo conseguir el archivo</span><${Icon.chev} class="chev" style=${{ transform: help ? "rotate(90deg)" : "none", transition: "transform 200ms" }}/></button>
+      ${help ? html`<div class="cell t-sub" style="display:block;line-height:1.5">
+        <ol style="margin:0;padding-left:20px">
+          <li>En el ordenador, abre una ventana de incógnito y entra en youtube.com con una cuenta de Google secundaria (mejor no la principal).</li>
+          <li>Instala la extensión <strong>Get cookies.txt LOCALLY</strong> (Chrome) o <strong>cookies.txt</strong> (Firefox).</li>
+          <li>Con youtube.com abierto, exporta las cookies en formato Netscape y cierra la ventana de incógnito sin cerrar sesión.</li>
+          <li>Sube aquí ese archivo. Las descargas bloqueadas se reintentan solas.</li>
+        </ol></div>` : null}
+    </div>
+    <p class="foot-note">YouTube trata a muchos servidores en la nube como bots. Con las cookies de una cuenta, yt2pod descarga como si fueras tú. Se guardan solo en tu servidor. Si dejan de funcionar al cabo de unas semanas, vuelve a subirlas.</p>
+  </section>`;
 }
 
 function relDateTime(iso) {

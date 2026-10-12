@@ -31,7 +31,7 @@ llegan tu móvil y tu ordenador. Dos opciones:
 | | Servidor en casa (recomendado) | VPS |
 |---|---|---|
 | Ejemplos | Raspberry Pi, NAS, un PC que no apagues | Hetzner, DigitalOcean… |
-| YouTube | Funciona: tu IP es doméstica | A menudo bloquea IPs de centros de datos («Sign in to confirm you're not a bot»). Hay que pasarle cookies y aun así puede fallar. |
+| YouTube | Funciona: tu IP es doméstica | A menudo bloquea IPs de centros de datos («Sign in to confirm you're not a bot»). Se arregla subiendo tus cookies de YouTube en *Ajustes → Acceso a YouTube*. |
 | Acceso desde fuera | [Tailscale](https://tailscale.com) (gratis): `tailscale serve --bg 8765` te da `https://<equipo>.<tailnet>.ts.net` con HTTPS | Dominio + HTTPS (Caddy o similar) |
 
 **La PWA necesita HTTPS** para instalarse y funcionar sin conexión (salvo en `localhost`).
@@ -45,7 +45,7 @@ Con Docker:
 docker compose up -d
 ```
 
-Sin Docker (Python 3.10+ y `ffmpeg`):
+Sin Docker (Python 3.10+, `ffmpeg` y [deno](https://deno.com), que yt-dlp usa para leer YouTube):
 
 ```bash
 pip install .
@@ -73,7 +73,7 @@ yt2pod user passwd jf    # cambiar una contraseña olvidada
 | `YT2POD_CHECK_INTERVAL` | `30m` | Cada cuánto mira si hay vídeos nuevos (mínimo 5 min). |
 | `YT2POD_AUDIO_FORMAT` | `m4a` | `m4a`, `best` (Opus), `opus` o `mp3`. |
 | `YT2POD_BASE_URL` | — | URL pública para los enlaces del feed RSS. |
-| `YT2POD_COOKIES_FILE` | — | `cookies.txt` de YouTube si te bloquean (sobre todo en un VPS). |
+| `YT2POD_COOKIES_FILE` | `<data>/cookies.txt` | `cookies.txt` de YouTube si te bloquean (sobre todo en un VPS). Lo más fácil es subirlo desde *Ajustes*. |
 | `YT2POD_SPONSORBLOCK` | — | Categorías a recortar, p. ej. `sponsor,selfpromo`. |
 | `YT2POD_OPEN_SIGNUP` | `false` | Permitir que cualquiera cree cuenta desde la pantalla de inicio. |
 

@@ -52,6 +52,10 @@ class ProgressIn(BaseModel):
     at: str | None = None  # client clock (ISO 8601) of when this position was recorded
 
 
+class CookiesIn(BaseModel):
+    content: str = Field(max_length=2_000_000)
+
+
 class PlayedIn(BaseModel):
     played: bool
 
@@ -60,7 +64,7 @@ class PlayedIn(BaseModel):
 def create_app(settings: Settings | None = None, yt: YouTube | None = None, start_worker: bool = True) -> FastAPI:
     settings = settings or Settings.from_env()
     db = DB(settings.db_path)
-    yt = yt or YouTube(settings.cookies_file)
+    yt = yt or YouTube(settings.cookies_path)
     worker = Worker(settings, db, yt)
 
     @asynccontextmanager
@@ -143,6 +147,7 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
     @app.get("/api/me")
     def me(request: Request, user: dict = Depends(current_user)):
         return {**public_user(user), "rss_url": f"{base_url(request)}/rss/{user['rss_token']}.xml",
+                "cookies": settings.cookies_path.is_file(),
                 "audio_format": settings.audio_format, "check_interval": settings.check_interval,
                 "watcher": worker.watch_status}
 
@@ -170,6 +175,40 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
         except ValueError as e:
             raise HTTPException(400, str(e))
         return public_user(db.one("SELECT * FROM users WHERE id=?", (uid,)))
+
+    # --- YouTube cookies (for servers YouTube treats as bots) ---------------------
+    def cookies_status() -> dict:
+        path = settings.cookies_path
+        if not path.is_file():
+            return {"present": False, "from_env": bool(settings.cookies_file)}
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+        return {"present": True, "updated_at": mtime, "from_env": bool(settings.cookies_file)}
+
+    @app.get("/api/cookies")
+    def get_cookies(admin: dict = Depends(admin_user)):
+        return cookies_status()
+
+    @app.put("/api/cookies")
+    def put_cookies(body: CookiesIn, admin: dict = Depends(admin_user)):
+        text = body.content.replace("\r\n", "\n")
+        rows = [ln.split("\t") for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
+        if not any(len(r) >= 7 and "youtube.com" in r[0] for r in rows):
+            raise HTTPException(400, "No parece un cookies.txt de YouTube. Expórtalo en formato Netscape "
+                                     "estando en youtube.com con la sesión iniciada.")
+        if not text.startswith("# Netscape") and not text.startswith("# HTTP Cookie File"):
+            text = "# Netscape HTTP Cookie File\n" + text  # yt-dlp requires the header
+        path = settings.cookies_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        path.chmod(0o600)
+        retried = db.retry_blocked_downloads()
+        worker.kick_downloads()
+        return {**cookies_status(), "retried": retried}
+
+    @app.delete("/api/cookies")
+    def delete_cookies(admin: dict = Depends(admin_user)):
+        settings.cookies_path.unlink(missing_ok=True)
+        return cookies_status()
 
     # --- discovery ----------------------------------------------------------------
     def with_subscribed(user: dict, channels: list[dict]) -> list[dict]:

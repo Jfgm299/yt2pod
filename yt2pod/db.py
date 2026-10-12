@@ -147,7 +147,8 @@ class DB:
     def x(self, sql: str, args: tuple | list = ()) -> int:
         with self.lock:
             cur = self.conn.execute(sql, args)
-            return cur.lastrowid or cur.rowcount
+            # New row id for inserts, number of affected rows for everything else.
+            return cur.lastrowid if sql.lstrip().upper().startswith("INSERT") else cur.rowcount
 
     def close(self) -> None:
         self.conn.close()
@@ -282,6 +283,11 @@ class DB:
             fields["audio"] = json.dumps(fields["audio"])
         sets = ", ".join(f"{k}=?" for k in fields)
         self.x(f"UPDATE downloads SET {sets} WHERE video_id=?", (*fields.values(), video_id))
+
+    def retry_blocked_downloads(self) -> int:
+        """After new cookies arrive, retry at once everything YouTube refused as a bot."""
+        return self.x("""UPDATE downloads SET status='queued', attempts=0, next_try_at=NULL, error=NULL, updated_at=?
+                         WHERE status IN ('failed', 'gave_up') AND error LIKE '%bot%'""", (now(),))
 
     def orphaned_downloads(self) -> list[dict]:
         """Finished files nobody has in their library any more."""

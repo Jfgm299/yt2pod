@@ -213,7 +213,7 @@ class Worker:
 def _friendly_error(msg: str) -> str:
     low = msg.lower()
     if "sign in to confirm" in low or "not a bot" in low:
-        return "YouTube pide verificar que no eres un bot. Configura cookies o ejecuta yt2pod desde casa."
+        return "YouTube pide verificar que no eres un bot. Sube tus cookies de YouTube en Ajustes."
     if "private video" in low:
         return "El vídeo es privado."
     if "members-only" in low or "join this channel" in low:

@@ -265,3 +265,36 @@ def test_migrations_are_idempotent(tmp_path):
     DB(tmp_path / "x.db").close()
     db = DB(tmp_path / "x.db")
     assert db.one("PRAGMA user_version")["user_version"] == 1
+
+
+def test_uploading_cookies_retries_blocked_downloads(env, tmp_path):
+    client, app, yt = env
+    client.get(f"/api/channels/{LA_PIZARRA}")
+    yt.fail_downloads["ep1aaaaaaaa"] = "ERROR: Sign in to confirm you're not a bot"
+    client.post("/api/episodes", json={"video_ids": ["ep1aaaaaaaa"]})
+    app.state.worker.download("ep1aaaaaaaa")
+    assert "Ajustes" in app.state.db.download("ep1aaaaaaaa")["error"]
+    assert client.get("/api/cookies").json()["present"] is False
+
+    assert client.put("/api/cookies", json={"content": "hola"}).status_code == 400
+    cookies = ".youtube.com\tTRUE\t/\tTRUE\t1999999999\tSID\tabc\n"
+    r = client.put("/api/cookies", json={"content": cookies}).json()
+    assert r["present"] and r["retried"] == 1
+    saved = (tmp_path / "cookies.txt").read_text()
+    assert saved.startswith("# Netscape") and "SID" in saved
+    assert app.state.db.next_download()["video_id"] == "ep1aaaaaaaa"
+    assert client.put("/api/cookies", json={"content": cookies}).json()["retried"] == 0
+
+    ana = TestClient(app)
+    client.post("/api/users", json={"username": "ana", "password": "contraseña2"})
+    ana.post("/api/login", json={"username": "ana", "password": "contraseña2"})
+    assert ana.put("/api/cookies", json={"content": cookies}).status_code == 403
+    assert client.delete("/api/cookies").json()["present"] is False
+
+
+def test_youtube_reads_cookie_file_lazily(tmp_path):
+    from yt2pod.youtube import YouTube
+    yt = YouTube(tmp_path / "cookies.txt")
+    assert yt.cookies() is None
+    (tmp_path / "cookies.txt").write_text("# Netscape HTTP Cookie File\n")
+    assert yt.cookies() == str(tmp_path / "cookies.txt")
