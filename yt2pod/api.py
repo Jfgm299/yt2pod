@@ -418,9 +418,10 @@ def create_app(settings: Settings | None = None, yt: YouTube | None = None, star
             raise HTTPException(404)
         file = (WEB / path).resolve()
         if path and WEB.resolve() in file.parents and file.is_file():
-            # The service worker and the shell must always be revalidated so updates land.
-            no_cache = file.name in ("sw.js", "index.html", "manifest.webmanifest")
-            headers = {"Cache-Control": "no-cache" if no_cache else "public, max-age=3600"}
+            # App code is revalidated on every load (cheap 304s via ETag) so a new deploy shows up at
+            # once; only icons and the vendored library, which never change in place, are cached.
+            immutable = path.startswith(("icons/", "vendor/"))
+            headers = {"Cache-Control": "public, max-age=86400" if immutable else "no-cache"}
             if file.name == "sw.js":
                 headers["Service-Worker-Allowed"] = "/"
             return FileResponse(file, headers=headers)

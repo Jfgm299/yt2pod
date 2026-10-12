@@ -219,6 +219,7 @@ def test_pwa_shell_is_served(env):
     assert "<title>yt2pod</title>" in client.get("/").text
     assert "<title>yt2pod</title>" in client.get("/canal/UC123").text  # client-side routes
     assert client.get("/sw.js").headers["cache-control"] == "no-cache"
+    assert client.get("/app.js").headers["cache-control"] == "no-cache"  # new deploys show up at once
     assert client.get("/manifest.webmanifest").status_code == 200
     assert client.get("/api/nope").status_code == 404
 
