@@ -199,8 +199,15 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // --- player --------------------------------------------------------------------------------
-const audio = new Audio();
-audio.preload = "metadata";
+// A real <audio> in the page (not a detached new Audio()), buffering ahead as much as the browser
+// allows: on iPhone, a paused page gets frozen while the screen is locked, and play from the lock
+// screen can only use audio that is already buffered until the page wakes up again.
+const audio = document.createElement("audio");
+audio.preload = "auto";
+audio.setAttribute("playsinline", "");
+audio.setAttribute("x-webkit-airplay", "allow");
+audio.hidden = true;
+document.body.appendChild(audio);
 let currentEp = null;
 let lastSaved = 0;
 let pendingSeek = null;
@@ -319,6 +326,18 @@ audio.addEventListener("error", () => {
   if (!currentEp) return;
   setPlayer({ playing: false, loading: false });
   toast(t("No se pudo cargar el audio"));
+});
+// Back from the lock screen: if iOS says it's playing but no data arrived while the page was
+// frozen, restart the stream at the same spot instead of making the user pause and play again.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !currentEp || audio.paused) return;
+  const at = audio.currentTime;
+  setTimeout(() => {
+    if (audio.paused || audio.currentTime > at + 0.5) return; // it is actually playing
+    audio.pause();
+    audio.currentTime = at;
+    audio.play().catch(() => {});
+  }, 1200);
 });
 window.addEventListener("pagehide", () => saveProgress({ force: true }));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveProgress({ force: true }); });
