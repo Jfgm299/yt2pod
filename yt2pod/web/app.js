@@ -875,19 +875,19 @@ function FullPlayer({ onDragStart, close }) {
     </div>
     <div>
       <${Scrubber} position=${p.position} duration=${dur} onDrag=${setScrub}/>
-      <div class=${"times" + (scrub != null ? " active" : "")}><span>${clock(shown)}</span><span>-${clock(Math.max(0, dur - shown))}</span></div>
+      <div class=${"times" + (scrub != null ? " active" : "")}><span>${clock(shown)}</span><span>−${clock(Math.max(0, dur - shown))}</span></div>
     </div>
     <div class="controls">
       <button class="skip" aria-label=${t("Retroceder 15 segundos")} onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
       <button class="big" aria-label=${p.playing ? t("Pausar") : t("Reproducir")} onClick=${() => player.toggle()}>
-        ${p.loading && p.playing ? html`<span class="spinner" style="width:36px;height:36px;border-width:3px"></span>` : p.playing ? html`<${Icon.pause}/>` : html`<${Icon.play} style="margin-left:5px"/>`}
+        ${p.loading && p.playing ? html`<span class="spinner" style="width:36px;height:36px;border-width:3px"></span>` : p.playing ? html`<${Icon.pause}/>` : html`<${Icon.play}/>`}
       </button>
       <button class="skip" aria-label=${t("Avanzar 30 segundos")} onClick=${() => player.skip(30)}><${Icon.fwd30}/></button>
     </div>
     <div class="bottom">
-      <button class="rate-btn" aria-label=${t("Velocidad {r}x", { r: p.rate })} onClick=${() => { haptic(4); player.setRate(nextRate); }}>${rate(p.rate)}</button>
+      <button class="pill" aria-label=${t("Velocidad {r}x", { r: p.rate })} onClick=${() => { haptic(4); player.setRate(nextRate); }}>${rate(p.rate)}</button>
       <${SleepButton} sleepAt=${p.sleepAt}/>
-      <button class="link-btn small" onClick=${() => setPlayed(ep, true)}>${t("Marcar como escuchado")}</button>
+      <button class="pill" aria-label=${t("Marcar como escuchado")} title=${t("Marcar como escuchado")} onClick=${() => { haptic(4); setPlayed(ep, true); }}><${Icon.check}/></button>
     </div>
     ${ep.description ? html`<div class="desc">${desc ? ep.description : ep.description.slice(0, 280)}${!desc && ep.description.length > 280 ? html`… <button class="link-btn small" onClick=${() => setDesc(true)}>${t("Más")}</button>` : null}</div>` : null}
   </div>`;
@@ -911,7 +911,7 @@ function SleepButton({ sleepAt }) {
       ...(sleepAt ? [{ label: t("Desactivar temporizador"), destructive: true, run: () => player.setSleep(null) }] : []),
     ],
   });
-  return html`<button class=${"rate-btn sleep-btn" + (sleepAt ? " on" : "")} aria-label=${sleepAt ? t("Temporizador: quedan {t}", { t: clock(left) }) : t("Temporizador")} onClick=${choose}>
+  return html`<button class=${"pill" + (sleepAt ? " on" : "")} aria-label=${sleepAt ? t("Temporizador: quedan {t}", { t: clock(left) }) : t("Temporizador")} onClick=${choose}>
     <${Icon.moon}/>${sleepAt ? html`<span>${clock(left)}</span>` : null}
   </button>`;
 }
@@ -965,8 +965,8 @@ function MiniPlayer() {
     <div class="scrub">
       <span class="t-cap dim num">${clock(shown)}</span>
       <${Scrubber} position=${p.position} duration=${dur} onDrag=${setScrub}/>
-      <span class="t-cap dim num">-${clock(Math.max(0, dur - shown))}</span>
-      <button class="rate-btn" style="height:28px;min-width:46px;font-size:.8125rem" onClick=${() => player.setRate(RATES[(RATES.indexOf(p.rate) + 1) % RATES.length] || 1)}>${rate(p.rate)}</button>
+      <span class="t-cap dim num">−${clock(Math.max(0, dur - shown))}</span>
+      <button class="pill small" aria-label=${t("Velocidad {r}x", { r: p.rate })} onClick=${() => player.setRate(RATES[(RATES.indexOf(p.rate) + 1) % RATES.length] || 1)}>${rate(p.rate)}</button>
     </div>
     <button class="icon-btn ctl desk-only" aria-label=${t("Retroceder 15 segundos")} onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
     <button class="icon-btn ctl" aria-label=${p.playing ? t("Pausar") : t("Reproducir")} onClick=${() => player.toggle()}>${p.playing ? html`<${Icon.pause}/>` : html`<${Icon.play}/>`}</button>
