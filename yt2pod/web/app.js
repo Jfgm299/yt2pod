@@ -31,11 +31,15 @@ const link = (path) => (e) => { e.preventDefault(); navigate(path); };
 
 // --- building blocks --------------------------------------------------------------------
 function Img({ src, alt = "", seed = "", children }) {
-  const [state, set] = useState(src ? "loading" : "error");
-  useEffect(() => set(src ? "loading" : "error"), [src]);
+  // State is keyed by src: a cached image can fire `load` before any effect runs, so the state
+  // must never be reset after mounting, only when the src really changes.
+  const [st, set] = useState({ src, state: src ? "loading" : "error" });
+  const state = st.src === src ? st.state : src ? "loading" : "error";
+  const img = useRef();
+  useLayoutEffect(() => { if (img.current?.complete && img.current.naturalWidth) set({ src, state: "loaded" }); }, [src]);
   if (state === "error") return html`<div class="placeholder-art" style=${{ background: tint(seed) }}>${children || html`<${Icon.waveform}/>`}</div>`;
-  return html`<img src=${src} alt=${alt} loading="lazy" decoding="async" referrerpolicy="no-referrer"
-    class=${"fade" + (state === "loaded" ? " loaded" : "")} onLoad=${() => set("loaded")} onError=${() => set("error")}/>`;
+  return html`<img ref=${img} src=${src} alt=${alt} loading="lazy" decoding="async" referrerpolicy="no-referrer"
+    class=${"fade" + (state === "loaded" ? " loaded" : "")} onLoad=${() => set({ src, state: "loaded" })} onError=${() => set({ src, state: "error" })}/>`;
 }
 
 function Thumb({ ep, showDuration = true, progress = true }) {

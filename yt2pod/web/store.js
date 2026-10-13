@@ -259,8 +259,10 @@ function mediaSession(ep) {
     artwork: ep.thumbnail ? [{ src: ep.thumbnail, sizes: "480x360", type: "image/jpeg" }] : [],
   });
   const set = (a, fn) => { try { navigator.mediaSession.setActionHandler(a, fn); } catch {} };
-  set("play", () => player.play());
-  set("pause", () => player.pause());
+  // No play/pause handlers on purpose: with none, iOS drives the <audio> element itself from the
+  // lock screen. A JS handler can't run while iOS has suspended the page, so play did nothing there.
+  set("play", null);
+  set("pause", null);
   set("seekbackward", (d) => player.skip(-(d.seekOffset || 15)));
   set("seekforward", (d) => player.skip(d.seekOffset || 30));
   set("seekto", (d) => player.seek(d.seekTime));
