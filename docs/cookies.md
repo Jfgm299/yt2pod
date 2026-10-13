@@ -1,80 +1,80 @@
-# Cookies de YouTube
+# YouTube cookies
 
-Si yt2pod corre en un VPS, lo más probable es que YouTube bloquee las descargas con
-**«Sign in to confirm you're not a bot»** (en la app: *YouTube pide verificar que no eres un bot*).
-YouTube trata como bots a casi todas las IPs de centros de datos. La solución es darle a yt2pod las
-cookies de una sesión de YouTube: así descarga como si fueras tú desde tu navegador.
+If yt2pod runs on a VPS, YouTube will most likely block downloads with
+**"Sign in to confirm you're not a bot"** (in the app: *YouTube wants to check you're not a bot*).
+YouTube treats almost every data-center IP as a bot. The fix is to give yt2pod the cookies of a
+YouTube session, so it downloads as if it were you in your own browser.
 
-En un servidor en casa normalmente no hace falta.
+On a home server you usually don't need this.
 
-## Antes de empezar
+## Before you start
 
-- **Usa una cuenta de Google secundaria**, no la principal. Las cookies dan acceso a esa cuenta y
-  YouTube puede limitar o bloquear cuentas que descargan mucho. Una cuenta nueva y vacía sirve.
-- Hazlo **en un ordenador**. Desde el móvil no se pueden exportar cookies con comodidad.
-- No hace falta YouTube Premium.
+- **Use a secondary Google account**, not your main one. The cookies give access to that account,
+  and YouTube may limit or block accounts that download a lot. A new, empty account is fine.
+- Do it **on a computer**. Exporting cookies from a phone isn't practical.
+- You don't need YouTube Premium.
 
-## Paso a paso (Chrome, Edge o Brave)
+## Step by step (Chrome, Edge or Brave)
 
-1. Instala la extensión **[Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)**.
-   Es de código abierto y no envía las cookies a ningún sitio. Evita la antigua «Get cookies.txt»
-   (sin *LOCALLY*): se retiró por enviar datos fuera.
-2. Permítela en incógnito: menú de extensiones → *Get cookies.txt LOCALLY* → *Detalles* →
-   activa **Permitir en modo incógnito**.
-3. Abre una **ventana de incógnito** y entra en <https://www.youtube.com> con la cuenta secundaria.
-4. En esa misma pestaña, ve a <https://www.youtube.com/robots.txt>. Así la sesión queda en una página
-   que no vuelve a tocar las cookies.
-5. Pulsa el icono de la extensión → formato **Netscape** → **Export**. Se descarga un archivo como
-   `www.youtube.com_cookies.txt`.
-6. **Cierra la ventana de incógnito sin cerrar sesión.** Si cierras sesión, las cookies dejan de valer al
-   momento. Y si sigues navegando por YouTube en esa ventana, YouTube las renueva y las del archivo caducan antes.
-7. En yt2pod: **Ajustes → Acceso a YouTube → Subir cookies.txt** y elige el archivo. Las descargas que
-   estaban bloqueadas se reintentan solas.
+1. Install the **[Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)**
+   extension. It's open source and doesn't send your cookies anywhere. Avoid the old "Get cookies.txt"
+   (without *LOCALLY*): it was pulled for sending data out.
+2. Allow it in incognito: extensions menu → *Get cookies.txt LOCALLY* → *Details* →
+   turn on **Allow in Incognito**.
+3. Open an **incognito window** and sign in to <https://www.youtube.com> with the secondary account.
+4. In that same tab, go to <https://www.youtube.com/robots.txt>. This leaves the session on a page that
+   won't touch the cookies again.
+5. Click the extension's icon → **Netscape** format → **Export**. A file like
+   `www.youtube.com_cookies.txt` is downloaded.
+6. **Close the incognito window without signing out.** Signing out invalidates the cookies immediately,
+   and if you keep browsing YouTube in that window, YouTube rotates them and the exported ones expire sooner.
+7. In yt2pod: **Settings → YouTube access → Upload cookies.txt** and pick the file. Downloads that were
+   blocked are retried automatically.
 
 ## Firefox
 
-Igual que arriba, con la extensión **[cookies.txt](https://addons.mozilla.org/firefox/addon/cookies-txt/)**
-en una **ventana privada** (en la ficha de la extensión: *Ejecutar en ventanas privadas → Permitir*).
-Exporta solo las cookies del sitio actual.
+Same as above, with the **[cookies.txt](https://addons.mozilla.org/firefox/addon/cookies-txt/)**
+extension in a **private window** (on the extension's page: *Run in Private Windows → Allow*).
+Export only the current site's cookies.
 
-## Con la terminal (alternativa)
+## From the terminal (alternative)
 
-Si tienes yt-dlp en tu ordenador y la cuenta abierta en Firefox:
+If you have yt-dlp on your computer and are signed in to YouTube in Firefox:
 
 ```bash
 yt-dlp --cookies-from-browser firefox --cookies cookies.txt --skip-download "https://www.youtube.com/watch?v=jNQXAC9IVRw"
 ```
 
-Eso crea `cookies.txt` con tu sesión de Firefox. Fuera de incógnito, el navegador sigue usando la
-sesión y YouTube rota las cookies antes. Por eso es preferible el método de la ventana privada.
+That writes `cookies.txt` from your Firefox session. Outside incognito the browser keeps using the
+session and YouTube rotates the cookies sooner, so the private-window method above is better.
 
-## Sin la app
+## Without the app
 
-El archivo vive en `<YT2POD_DATA_DIR>/cookies.txt`. En Docker o Dokploy es `/data/cookies.txt` dentro
-del volumen. También puedes copiarlo ahí a mano o apuntar a otra ruta con `YT2POD_COOKIES_FILE`.
-yt2pod lo lee en cada descarga, así que no hace falta reiniciar.
+The file lives at `<YT2POD_DATA_DIR>/cookies.txt`. With Docker or Dokploy that's `/data/cookies.txt`
+inside the volume. You can also copy it there by hand, or point to another path with
+`YT2POD_COOKIES_FILE`. yt2pod reads it on every download, so no restart is needed.
 
-## ¿Cuánto duran?
+## How long do they last?
 
-No hay una fecha fija. Si las exportas como se explica arriba y nadie vuelve a usar esa sesión, suelen
-aguantar **semanas o meses**. Caducan antes si:
+There's no fixed date. Exported as described above and with nobody using that session again, they
+usually last **weeks or months**. They expire sooner if:
 
-- cierras sesión en esa cuenta,
-- sigues navegando por YouTube con la misma sesión,
-- cambias la contraseña de la cuenta o Google la marca como sospechosa.
+- you sign out of that account,
+- you keep browsing YouTube with the same session,
+- you change the account's password or Google flags it as suspicious.
 
-Cuando dejen de valer, las descargas vuelven a fallar con el aviso del bot. Repite los pasos y súbelas de nuevo.
+When they stop working, downloads fail again with the bot message. Repeat the steps and upload new ones.
 
-## Si aun así falla
+## If it still fails
 
-- Comprueba que el archivo empieza por `# Netscape HTTP Cookie File` y tiene líneas de `.youtube.com`.
-  yt2pod rechaza el archivo si no las encuentra.
-- Actualiza yt-dlp: la imagen Docker lo hace sola en cada arranque (*Deploy* en Dokploy).
-- Algunas IPs de VPS están tan marcadas que YouTube bloquea incluso con cookies. Entonces lo más fiable es
-  correr yt2pod en casa (una Raspberry Pi o un PC encendido) con Tailscale.
+- Check that the file starts with `# Netscape HTTP Cookie File` and has `.youtube.com` lines.
+  yt2pod rejects the file if it can't find them.
+- Update yt-dlp: the Docker image does it on every start (*Deploy* in Dokploy).
+- Some VPS IPs are flagged so heavily that YouTube blocks them even with cookies. In that case the most
+  reliable option is to run yt2pod at home (a Raspberry Pi or a PC that stays on) with Tailscale.
 
-## Seguridad
+## Security
 
-Las cookies son como una sesión abierta de esa cuenta. yt2pod las guarda solo en tu servidor, con
-permisos `600`. Solo la cuenta de administrador puede subirlas o borrarlas, y la app nunca las muestra.
-Borrarlas desde *Ajustes* elimina el archivo.
+Cookies are like an open session of that account. yt2pod stores them only on your server, with
+`600` permissions. Only the admin account can upload or delete them, and the app never shows them.
+Deleting them from *Settings* removes the file.
