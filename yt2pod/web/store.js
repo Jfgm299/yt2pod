@@ -199,24 +199,19 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // --- player --------------------------------------------------------------------------------
-// A real <audio> in the page (not a detached new Audio()), buffering ahead as much as the browser
-// allows: on iPhone, a paused page gets frozen while the screen is locked, and play from the lock
-// screen can only use audio that is already buffered until the page wakes up again.
-const audio = document.createElement("audio");
-audio.preload = "auto";
-audio.setAttribute("playsinline", "");
-audio.setAttribute("x-webkit-airplay", "allow");
-audio.hidden = true;
-document.body.appendChild(audio);
+const audio = new Audio();
+audio.preload = "metadata";
 let currentEp = null;
 let lastSaved = 0;
 let pendingSeek = null;
+let seekTries = 0;
 
 function setPlayer(patch) { setState((s) => ({ player: { ...s.player, ...patch } })); }
 
 function saveProgress({ played, force } = {}) {
   if (!currentEp) return;
-  const position = audio.currentTime || state.player.position || 0;
+  // Until the start position has really been applied, currentTime says 0: never save that.
+  const position = pendingSeek != null ? pendingSeek : audio.currentTime || state.player.position || 0;
   if (!force && Math.abs(position - lastSaved) < 3 && played === undefined) return;
   lastSaved = position;
   const body = { position, at: new Date().toISOString(), ...(played !== undefined ? { played } : {}) };
@@ -307,37 +302,37 @@ audio.addEventListener("timeupdate", () => {
   if (now - lastTick < 250) return;
   lastTick = now;
   checkSleep();
+  if (pendingSeek != null) return;
   setPlayer({ position: audio.currentTime });
   if (Math.abs(audio.currentTime - lastSaved) >= 15) saveProgress();
 });
+// iOS may ignore a seek made this early, so pendingSeek is kept (and re-applied) until it sticks.
+function applyPendingSeek() {
+  if (pendingSeek == null || audio.readyState === 0) return;
+  if (Math.abs(audio.currentTime - pendingSeek) < 1 || seekTries >= 5) { pendingSeek = null; seekTries = 0; }
+  else { seekTries++; audio.currentTime = pendingSeek; }
+}
 audio.addEventListener("loadedmetadata", () => {
-  if (pendingSeek != null) { audio.currentTime = pendingSeek; pendingSeek = null; }
+  applyPendingSeek();
   setPlayer({ duration: audio.duration, loading: false });
   positionState();
 });
 audio.addEventListener("play", () => { setPlayer({ playing: true }); navigator.mediaSession && (navigator.mediaSession.playbackState = "playing"); });
 audio.addEventListener("pause", () => { audio.volume = 1; setPlayer({ playing: false }); saveProgress({ force: true }); navigator.mediaSession && (navigator.mediaSession.playbackState = "paused"); });
 audio.addEventListener("waiting", () => setPlayer({ loading: true }));
-audio.addEventListener("playing", () => setPlayer({ loading: false }));
-audio.addEventListener("seeked", () => { saveProgress({ force: true }); positionState(); });
+audio.addEventListener("canplay", applyPendingSeek);
+audio.addEventListener("playing", () => { applyPendingSeek(); setPlayer({ loading: false }); });
+audio.addEventListener("seeked", () => {
+  applyPendingSeek();
+  if (pendingSeek == null) saveProgress({ force: true });
+  positionState();
+});
 audio.addEventListener("ratechange", positionState);
 audio.addEventListener("ended", () => { saveProgress({ played: true, force: true }); setPlayer({ playing: false }); });
 audio.addEventListener("error", () => {
   if (!currentEp) return;
   setPlayer({ playing: false, loading: false });
   toast(t("No se pudo cargar el audio"));
-});
-// Back from the lock screen: if iOS says it's playing but no data arrived while the page was
-// frozen, restart the stream at the same spot instead of making the user pause and play again.
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible" || !currentEp || audio.paused) return;
-  const at = audio.currentTime;
-  setTimeout(() => {
-    if (audio.paused || audio.currentTime > at + 0.5) return; // it is actually playing
-    audio.pause();
-    audio.currentTime = at;
-    audio.play().catch(() => {});
-  }, 1200);
 });
 window.addEventListener("pagehide", () => saveProgress({ force: true }));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveProgress({ force: true }); });
@@ -369,10 +364,11 @@ export const player = {
   seek(t) {
     const d = audio.duration || state.player.duration || 0;
     t = Math.max(0, Math.min(d || t, t));
-    if (audio.readyState > 0) audio.currentTime = t; else pendingSeek = t;
+    if (audio.readyState > 0 && pendingSeek == null) audio.currentTime = t;
+    else { pendingSeek = t; applyPendingSeek(); }
     setPlayer({ position: t });
   },
-  skip(delta) { this.seek((audio.currentTime || state.player.position) + delta); },
+  skip(delta) { this.seek((pendingSeek ?? (audio.currentTime || state.player.position)) + delta); },
   setRate(rate) {
     audio.playbackRate = rate; audio.defaultPlaybackRate = rate;
     LS.set("rate", rate);
