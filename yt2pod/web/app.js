@@ -857,8 +857,10 @@ function FullPlayer({ onDragStart, close }) {
   const p = useStore((s) => s.player);
   const ep = useStore((s) => s.episodes.find((e) => e.id === s.player.id));
   const [desc, setDesc] = useState(false);
+  const [scrub, setScrub] = useState(null);
   if (!ep) return null;
   const dur = p.duration || ep.duration || 0;
+  const shown = scrub ?? p.position;
   const nextRate = RATES[(RATES.indexOf(p.rate) + 1) % RATES.length] || 1;
   return html`<div class="player">
     <div class="art-wrap" onPointerDown=${onDragStart} style="touch-action:none">
@@ -872,8 +874,8 @@ function FullPlayer({ onDragStart, close }) {
       <button class="more-btn" aria-label=${t("Más opciones")} onClick=${() => openEpisodeActions(ep)}><${Icon.more}/></button>
     </div>
     <div>
-      <${Scrubber} position=${p.position} duration=${dur}/>
-      <div class="times"><span>${clock(p.position)}</span><span>-${clock(Math.max(0, dur - p.position))}</span></div>
+      <${Scrubber} position=${p.position} duration=${dur} onDrag=${setScrub}/>
+      <div class=${"times" + (scrub != null ? " active" : "")}><span>${clock(shown)}</span><span>-${clock(Math.max(0, dur - shown))}</span></div>
     </div>
     <div class="controls">
       <button class="skip" aria-label=${t("Retroceder 15 segundos")} onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
@@ -914,9 +916,12 @@ function SleepButton({ sleepAt }) {
   </button>`;
 }
 
-function Scrubber({ position, duration }) {
+/** Seek bar. While a finger or the mouse is held down, the time under it shows in a bubble and in the
+ * labels around the bar (through onDrag), and the audio only jumps when it's released. */
+function Scrubber({ position, duration, onDrag }) {
   const ref = useRef();
-  const [drag, setDrag] = useState(null); // fraction while dragging
+  const [drag, _setDrag] = useState(null); // fraction while dragging
+  const setDrag = (f) => { _setDrag(f); onDrag?.(f == null ? null : f * duration); };
   const frac = drag ?? (duration ? position / duration : 0);
   const at = (clientX) => {
     const r = ref.current.getBoundingClientRect();
@@ -938,15 +943,18 @@ function Scrubber({ position, duration }) {
       aria-label=${t("Posición")} aria-valuemin="0" aria-valuemax=${Math.round(duration)} aria-valuenow=${Math.round(frac * duration)} aria-valuetext=${clock(frac * duration)}
       onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${() => setDrag(null)} onKeyDown=${key}>
     <div class="track"><i style=${{ width: frac * 100 + "%" }}></i></div>
-    ${drag != null ? html`<span class="sr" aria-live="polite">${clock(drag * duration)}</span>` : null}
+    <span class="knob" style=${{ left: frac * 100 + "%" }}></span>
+    ${drag != null ? html`<span class="tip num" aria-live="polite" style=${{ left: `clamp(28px, ${frac * 100}%, calc(100% - 28px))` }}>${clock(drag * duration)}</span>` : null}
   </div>`;
 }
 
 function MiniPlayer() {
   const p = useStore((s) => s.player);
   const ep = useStore((s) => s.episodes.find((e) => e.id === s.player.id));
+  const [scrub, setScrub] = useState(null);
   if (!p.id || !ep) return null;
   const dur = p.duration || ep.duration || 0;
+  const shown = scrub ?? p.position;
   const openSheet = () => setState({ sheet: "player" });
   return html`<div class="mini" role="region" aria-label=${t("Reproduciendo")}>
     <div class="art" onClick=${openSheet}><${Thumb} ep=${ep} showDuration=${false} progress=${false}/></div>
@@ -955,9 +963,9 @@ function MiniPlayer() {
       <div class="t-foot dim clamp1">${ep.channel_title}</div>
     </div>
     <div class="scrub">
-      <span class="t-cap dim num">${clock(p.position)}</span>
-      <${Scrubber} position=${p.position} duration=${dur}/>
-      <span class="t-cap dim num">-${clock(Math.max(0, dur - p.position))}</span>
+      <span class="t-cap dim num">${clock(shown)}</span>
+      <${Scrubber} position=${p.position} duration=${dur} onDrag=${setScrub}/>
+      <span class="t-cap dim num">-${clock(Math.max(0, dur - shown))}</span>
       <button class="rate-btn" style="height:28px;min-width:46px;font-size:.8125rem" onClick=${() => player.setRate(RATES[(RATES.indexOf(p.rate) + 1) % RATES.length] || 1)}>${rate(p.rate)}</button>
     </div>
     <button class="icon-btn ctl desk-only" aria-label=${t("Retroceder 15 segundos")} onClick=${() => player.skip(-15)}><${Icon.back15}/></button>
